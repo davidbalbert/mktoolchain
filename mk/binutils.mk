@@ -9,28 +9,28 @@ binutils: $(TARGET_BUILD_DIR)/.binutils.installed
 %/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: LDFLAGS :=
 
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PREFIX := $(BOOTSTRAP_PREFIX)
-# there's no bootstrap sysroot
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: SYSROOT := $(BUILD_SYSROOT)
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PATH := $(ORIG_PATH)
-
 $(TARGET_BUILD_DIR)/.binutils.installed: PREFIX := $(TARGET_PREFIX)
 $(TARGET_BUILD_DIR)/.binutils.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(TARGET_BUILD_DIR)/.binutils.installed: PATH := $(CROSS_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
 
 $(CROSS_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(CROSS_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
 $(CROSS_BUILD_DIR)/.binutils.installed: PREFIX := $(CROSS_PREFIX)
 $(CROSS_BUILD_DIR)/.binutils.installed: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
+$(CROSS_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(ORIG_PATH)
 
 $(BUILD_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BUILD_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(BUILD_BUILD_DIR)/.binutils.installed: PREFIX := $(BUILD_PREFIX)
 $(BUILD_BUILD_DIR)/.binutils.installed: SYSROOT := $(BUILD_SYSROOT)
 $(BUILD_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PREFIX := $(BOOTSTRAP_PREFIX)
+# there's no bootstrap sysroot
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: SYSROOT := $(BUILD_SYSROOT)
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PATH := $(ORIG_PATH)
 
 BINUTILS_CONFIG = \
 	--host=$(HOST_TRIPLE) \

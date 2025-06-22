@@ -12,37 +12,35 @@ $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT_SYMLINK := ../../../../$(BUILD)/$
 %/.gcc.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: LDFLAGS :=
 
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PREFIX := $(BOOTSTRAP_PREFIX)
-# there's no bootstrap sysroot
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT := $(BUILD_SYSROOT)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(TARGET_BUILD_DIR)/.gcc.installed: PREFIX := $(TARGET_PREFIX)
+$(TARGET_BUILD_DIR)/.gcc.installed: SYSROOT := $(SYSROOT)
+$(TARGET_BUILD_DIR)/.gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
+$(TARGET_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG)
 
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
+$(CROSS_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(CROSS_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
+$(CROSS_BUILD_DIR)/.gcc.installed: PREFIX := $(CROSS_PREFIX)
+$(CROSS_BUILD_DIR)/.gcc.installed: SYSROOT := $(CROSS_SYSROOT)
+$(CROSS_BUILD_DIR)/.gcc.installed: PATH := $(BUILD_PREFIX)/bin:$(ORIG_PATH)
+$(CROSS_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG)
 
 $(BUILD_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BUILD_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(BUILD_BUILD_DIR)/.gcc.installed: PREFIX := $(BUILD_PREFIX)
 $(BUILD_BUILD_DIR)/.gcc.installed: SYSROOT := $(BUILD_SYSROOT)
 $(BUILD_BUILD_DIR)/.gcc.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-
+# If we're using the BOOTSTRAP compiler, make sure we still use BUILD binutils.
 $(BUILD_BUILD_DIR)/.gcc.installed: BUILD_TIME_TOOLS := $(if $(wildcard $(BUILD_PREFIX)/bin/$(TARGET_TRIPLE)-gcc),,--with-build-time-tools=$(BUILD_PREFIX)/$(TARGET_TRIPLE)/bin)
 $(BUILD_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(BUILD_TIME_TOOLS)
 
-$(CROSS_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(CROSS_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
-$(CROSS_BUILD_DIR)/.gcc.installed: PREFIX := $(CROSS_PREFIX)
-$(CROSS_BUILD_DIR)/.gcc.installed: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.gcc.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PREFIX := $(BOOTSTRAP_PREFIX)
+# there's no bootstrap sysroot
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT := $(BUILD_SYSROOT)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
 
-$(BUILD_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(BUILD_TIME_TOOLS)
-
-$(TARGET_BUILD_DIR)/.gcc.installed: PREFIX := $(TARGET_PREFIX)
-$(TARGET_BUILD_DIR)/.gcc.installed: SYSROOT := $(SYSROOT)
-$(TARGET_BUILD_DIR)/.gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-
-$(BUILD_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(BUILD_TIME_TOOLS)
 
 GCC_BASE_CONFIG = \
 	--host=$(HOST_TRIPLE) \
