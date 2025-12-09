@@ -390,7 +390,7 @@ build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed: TOOLCHAIN_TYPE = fi
 ### Step 6: Simplify Phony Targets
 - [ ] Remove most phony aliases (gcc, binutils, glibc, bootstrap-*, linux-headers)
 - [ ] Keep only `toolchain` as the main user-facing phony target
-- [ ] Keep `clean`, `clean-bootstrap`, `clean-downloads`, `clean-sources` targets
+- [ ] Keep `download`, `clean`, `clean-bootstrap`, `clean-downloads`, `clean-sources` targets
 - [ ] Update `.PHONY:` declarations to match new target structure
 
 ### Step 7: Update Clean Targets
@@ -403,6 +403,7 @@ build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed: TOOLCHAIN_TYPE = fi
 - [ ] Install to `$(TARGET_PREFIX)/libexec/ld-linux-shim`
 - [ ] Keep existing `ld-linux-shim/Makefile` for compatibility with old script build system
 - [ ] Make ld-linux-shim depend on `.gcc.installed`
+- [ ] Use git commit timestamp for SOURCE_DATE_EPOCH (not tarball timestamp)
 
 ### Step 9: Add Toolchain Target with Relocation
 - [ ] Add `.toolchain` file target that runs `make-reloc.sh` on the target toolchain
