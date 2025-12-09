@@ -2,6 +2,10 @@ CONFIG ?= config.mk
 
 PROJECT_ROOT := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
+ifneq ($(filter $(PROJECT_ROOT) $(PROJECT_ROOT)/%,$(CURDIR)),)
+$(error In-tree builds are not supported. Please run from a separate build directory using: make -f $(PROJECT_ROOT)/Makefile)
+endif
+
 export LC_ALL := C.UTF-8
 
 ifeq ($(filter -j%,$(MAKEFLAGS)),)

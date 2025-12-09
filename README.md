@@ -23,8 +23,10 @@ $ script/make-reloc.sh /path/to/buildroot/out/$(uname -m)-linux-gnu/$(uname -m)-
 
 ## Requirements
 
+- gawk
 - make
 - patchelf
+- python
 
 ## License
 
