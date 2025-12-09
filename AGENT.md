@@ -28,6 +28,9 @@ To run the shell scripts, cd into /home/david/buildroot-old and run the scripts 
 /Users/david/Developer/mktoolchain/script. To run the Makefile, cd into /home/david/buildroot
 and run make with `-f /Users/david/Developer/mktoolchain/Makefile`.
 
+Before running the Makefile, copy config.mk into the build directory:
+`cp /Users/david/Developer/mktoolchain/config.mk /home/david/buildroot/`
+
 When running the scripts, please use --clean to remove the build directory and start from scratch.
 The makefile build output has to be cleaned manually. Before you run make, delete
 buildroot/build/bootstrap/aarch64-linux-gnu-gcc-15.1.0/gcc as well as

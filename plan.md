@@ -363,46 +363,59 @@ build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed: TOOLCHAIN_TYPE = fi
 - [x] Add conditional dependency chains based on build scenario
 
 ### Step 3: Refactor Pattern Rules to be Generic
-- [ ] Replace hardcoded `$(BB)/.component.{configured,compiled,installed}` patterns
-- [ ] Replace hardcoded `$(B)/.component.{configured,compiled,installed}` patterns
-- [ ] Update linux.mk to use generic paths instead of hardcoded `$(B)`
-- [ ] Create single generic pattern rule that works for any toolchain path
-- [ ] Remove duplication between bootstrap and regular build rules
+- [x] Replace hardcoded `$(BB)/.component.{configured,compiled,installed}` patterns
+- [x] Replace hardcoded `$(B)/.component.{configured,compiled,installed}` patterns
+- [x] Update linux.mk to use generic paths instead of hardcoded `$(B)`
+- [x] Create single generic pattern rule that works for any toolchain path
+- [x] Remove duplication between bootstrap and regular build rules
 - [ ] Test that pattern rules work for all toolchain paths
 
 ### Step 4: Move Target-Specific Variables to .installed Targets
-- [ ] Move variables from `bootstrap-component:` to `path/.component.installed:` in binutils.mk
-- [ ] Move variables from `component:` to `path/.component.installed:` in binutils.mk
-- [ ] Repeat for gcc.mk, glibc.mk, linux.mk, libstdc++.mk
-- [ ] Update hardcoded paths in variables like `SYSROOT_SYMLINK`, `SYSROOT_SYMLINK_DIR`
-- [ ] Ensure pattern rules can still inherit variables from `.installed` targets
+- [x] Move variables from `bootstrap-component:` to `path/.component.installed:` in binutils.mk
+- [x] Move variables from `component:` to `path/.component.installed:` in binutils.mk
+- [x] Repeat for gcc.mk, glibc.mk, linux.mk, libstdc++.mk
+- [x] Update hardcoded paths in variables like `SYSROOT_SYMLINK`, `SYSROOT_SYMLINK_DIR`
+- [x] Ensure pattern rules can still inherit variables from `.installed` targets
 - [ ] Test that variables are set correctly during builds
 
 ### Step 5: Update Dependencies and Prerequisites
-- [ ] Eliminate all order-only prerequisites (`| bootstrap-binutils`) throughout all .mk files
-- [ ] Make gcc dependencies conditional on build phase (declare on `.installed` files)
-- [ ] Make glibc dependencies conditional on build phase (declare on `.installed` files)
-- [ ] Make bootstrap-libstdc++ dependencies conditional on build phase (declare on `.installed` files)
-- [ ] Make linux-headers dependencies conditional on build phase (declare on `.installed` files)
-- [ ] Add proper ordering within phases (binutils → gcc → glibc, bootstrap: + libstdc++)
+- [x] Eliminate all order-only prerequisites (`| bootstrap-binutils`) throughout all .mk files
+- [x] Make gcc dependencies conditional on build phase (declare on `.installed` files)
+- [x] Make glibc dependencies conditional on build phase (declare on `.installed` files)
+- [x] Make bootstrap-libstdc++ dependencies conditional on build phase (declare on `.installed` files)
+- [x] Make linux-headers dependencies conditional on build phase (declare on `.installed` files)
+- [x] Add proper ordering within phases (binutils → gcc → glibc, bootstrap: + libstdc++)
 - [ ] Test dependency resolution for different build scenarios
 
-### Step 6: Update Phony Targets to be Pure Aliases
-- [ ] Change phony targets (gcc, binutils, glibc) to point to appropriate `.installed` files
-- [ ] Remove target-specific variable assignments from phony targets
-- [ ] Add bootstrap component aliases (bootstrap-gcc, bootstrap-binutils, bootstrap-glibc, bootstrap-libstdc++)
-- [ ] Add linux-headers alias to appropriate `.installed` file
+### Step 6: Simplify Phony Targets
+- [ ] Remove most phony aliases (gcc, binutils, glibc, bootstrap-*, linux-headers)
+- [ ] Keep only `toolchain` as the main user-facing phony target
+- [ ] Keep `clean`, `clean-bootstrap`, `clean-downloads`, `clean-sources` targets
 - [ ] Update `.PHONY:` declarations to match new target structure
-- [ ] Test that `make gcc HOST=x TARGET=y` works correctly
 
 ### Step 7: Update Clean Targets
-- [ ] Update clean targets to work with new unified directory structure
+- [x] Update clean targets to work with new unified directory structure
 - [ ] Test that clean operations work correctly for different BUILD/HOST/TARGET combinations
 
-### Step 8: Testing and Validation
-- [ ] Test native build scenario: `make gcc HOST=x86_64 TARGET=x86_64`
-- [ ] Test cross-compile scenario: `make gcc HOST=x86_64 TARGET=aarch64`
-- [ ] Test bootstrap scenario: `make bootstrap-gcc`
+### Step 8: Add ld-linux-shim Build
+- [ ] Create `mk/ld-linux-shim.mk` that builds ld-linux-shim without recursive make
+- [ ] Use target toolchain (TARGET_PREFIX) to compile ld-linux-shim
+- [ ] Install to `$(TARGET_PREFIX)/libexec/ld-linux-shim`
+- [ ] Keep existing `ld-linux-shim/Makefile` for compatibility with old script build system
+- [ ] Make ld-linux-shim depend on `.gcc.installed`
+
+### Step 9: Add Toolchain Target with Relocation
+- [ ] Add `.toolchain` file target that runs `make-reloc.sh` on the target toolchain
+- [ ] `.toolchain` depends on `.gcc.installed`, `.glibc.installed`, and `.ld-linux-shim.installed` files
+- [ ] Add `toolchain` phony target as alias to `.toolchain` file
+- [ ] Make `toolchain` the default target
+
+### Step 10: Testing and Validation
+- [ ] Test `make toolchain` builds everything correctly
+- [ ] Test `make toolchain HOST=x86_64 TARGET=aarch64` for cross-compilation
 - [ ] Verify all generated paths and toolchain names are correct
 - [ ] Verify reproducibility flags are still applied correctly
 - [ ] Test parallel builds work correctly
+- [ ] Test ld-linux-shim builds correctly with target toolchain
+- [ ] Test relocatable toolchain works from different locations
+- [ ] Test build reproducibility: build from two different directories and verify identical outputs (e.g., `diff -r` or compare checksums)
