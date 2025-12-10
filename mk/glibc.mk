@@ -1,4 +1,4 @@
-GLIBC_BASE_FLAGS := -O2 -g -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+GLIBC_BASE_FLAGS := -O2 -g0 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
 %/.glibc.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/glibc-$(GLIBC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
 $(TARGET_BUILD_DIR)/.glibc.installed: SYSROOT := $(TARGET_SYSROOT)
@@ -66,11 +66,11 @@ $(BOOTSTRAP_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.gcc.installed
 # instead of links-dso-program (C++ version). The C++ version requires -lgcc_s which
 # doesn't exist with bootstrap GCC (built with --disable-shared).
 $(BOOTSTRAP_BUILD_DIR)/.glibc.compiled: $(BOOTSTRAP_BUILD_DIR)/.glibc.configured
-	cd $(BOOTSTRAP_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	cd $(BOOTSTRAP_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
 	touch $@
 
 %/.glibc.compiled: %/.glibc.configured
-	cd $*/glibc/build && $(MAKE)
+	cd $*/glibc/build && $(MAKE) CREATE_ARFLAGS=Dcru
 	touch $@
 
 %/.glibc.installed: %/.glibc.compiled

@@ -82,7 +82,7 @@ ifeq ($(BUILD)_$(HOST)_$(TARGET),$(BUILD)_$(BUILD)_$(BUILD))
   $(TARGET_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   # Bootstrap GCC has no libgcc_s, so force C version of links-dso-program
   $(TARGET_BUILD_DIR)/.glibc.compiled: $(TARGET_BUILD_DIR)/.glibc.configured
-	cd $(TARGET_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	cd $(TARGET_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
 	touch $@
   $(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
@@ -96,7 +96,7 @@ else ifeq ($(HOST),$(BUILD))
   $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
-	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
 	touch $@
   $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed
@@ -116,7 +116,7 @@ else
   $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
-	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
 	touch $@
   $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed

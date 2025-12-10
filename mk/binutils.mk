@@ -64,7 +64,7 @@ BINUTILS_CONFIG = \
 	touch $@
 
 %/.binutils.compiled: %/.binutils.configured
-	cd $*/binutils/build && $(MAKE) MAKEINFO=true LDFLAGS="$(LDFLAGS)"
+	cd $*/binutils/build && $(MAKE) MAKEINFO=true LDFLAGS="$(LDFLAGS)" AR_FLAGS=Drc
 	touch $@
 
 %/.binutils.installed: %/.binutils.compiled

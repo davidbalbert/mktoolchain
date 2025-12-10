@@ -128,7 +128,7 @@ endif
 	cd $*/gcc/build && \
 		$(MAKE) configure-gcc && \
 		sed -i 's/ --with-build-sysroot=[^"]*//; s/ --with-build-time-tools=[^"]*//' gcc/configargs.h && \
-		$(MAKE) LDFLAGS="$(LDFLAGS)"
+		$(MAKE) LDFLAGS="$(LDFLAGS)" LIBGCC2_DEBUG_CFLAGS=-g0 'AR_CREATE_FOR_TARGET=$$(AR_FOR_TARGET) Drc'
 	touch $@
 
 %/.gcc.installed: %/.gcc.compiled
@@ -174,6 +174,10 @@ endif
 	touch $@
 
 # gcc-stage1 rules (bootstrap-style gcc for TARGET, builds gcc + libgcc only)
+%/.gcc-stage1.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+%/.gcc-stage1.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+%/.gcc-stage1.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
+
 .PRECIOUS: %/.gcc-stage1.configured %/.gcc-stage1.compiled %/.gcc-stage1.installed
 
 %/.gcc-stage1.configured: $(SRC_DIR)/gcc-$(GCC_VERSION) %/.binutils.installed
@@ -192,7 +196,7 @@ endif
 		$(MAKE) configure-gcc && \
 		sed -i 's/ --with-build-sysroot=[^"]*//; s/ --with-build-time-tools=[^"]*//' gcc/configargs.h && \
 		$(MAKE) all-gcc && \
-		$(MAKE) all-target-libgcc
+		$(MAKE) -C $(TARGET_TRIPLE)/libgcc CFLAGS="-g0 -O2" LIBGCC2_DEBUG_CFLAGS=-g0 'AR_CREATE_FOR_TARGET=$$(AR_FOR_TARGET) Drc'
 	touch $@
 
 %/.gcc-stage1.installed: %/.gcc-stage1.compiled
