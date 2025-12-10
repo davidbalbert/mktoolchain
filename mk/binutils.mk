@@ -1,14 +1,18 @@
-bootstrap-binutils: $(BOOTSTRAP_BUILD_DIR)/.binutils.installed
-binutils: $(TARGET_BUILD_DIR)/.binutils.installed
-
-%/.binutils.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$*=.
-%/.binutils.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$*=.
+%/.binutils.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+%/.binutils.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
 %/.binutils.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/binutils-$(BINUTILS_VERSION)/.timestamp 2>/dev/null || echo 1)
 
-%/.binutils.installed: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1 || (echo "Error: No dynamic linker found in $(SYSROOT)/usr/lib" >&2; exit 1))
-%/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: LDFLAGS :=
+# LDFLAGS only for native builds (BUILD=HOST=TARGET) to link against our sysroot
+# Cross-compilers don't need this as build tools must run on build machine
+%/.binutils.installed: LDFLAGS :=
+%/.binutils.compiled: LDFLAGS :=
+$(BUILD_BUILD_DIR)/.binutils.installed: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1)
+$(BUILD_BUILD_DIR)/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
+$(BUILD_BUILD_DIR)/.binutils.compiled: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1)
+$(BUILD_BUILD_DIR)/.binutils.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
 
+$(TARGET_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(HOST_TRIPLE)
+$(TARGET_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(TARGET_TRIPLE)
 $(TARGET_BUILD_DIR)/.binutils.installed: PREFIX := $(TARGET_PREFIX)
 $(TARGET_BUILD_DIR)/.binutils.installed: SYSROOT := $(TARGET_SYSROOT)
 $(TARGET_BUILD_DIR)/.binutils.installed: PATH := $(CROSS_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
@@ -25,6 +29,9 @@ $(BUILD_BUILD_DIR)/.binutils.installed: PREFIX := $(BUILD_PREFIX)
 $(BUILD_BUILD_DIR)/.binutils.installed: SYSROOT := $(BUILD_SYSROOT)
 $(BUILD_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
 
+$(BUILD_BUILD_DIR)/.binutils.compiled: SYSROOT := $(BUILD_SYSROOT)
+$(BUILD_BUILD_DIR)/.binutils.compiled: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PREFIX := $(BOOTSTRAP_PREFIX)
@@ -40,9 +47,11 @@ BINUTILS_CONFIG = \
 	--program-prefix=$(TARGET_TRIPLE)- \
 	--disable-shared \
 	--enable-new-dtags \
-	--disable-werror
+	--disable-werror \
+	--disable-gprofng \
+	MAKEINFO=true
 
-.PRECIOUS: %/.binutils.configured %/.binutils.compiled
+.PRECIOUS: %/.binutils.configured %/.binutils.compiled %/.binutils.installed
 
 %/.binutils.configured: $(SRC_DIR)/binutils-$(BINUTILS_VERSION)
 	mkdir -p $*/binutils/build
@@ -50,13 +59,12 @@ BINUTILS_CONFIG = \
 	cd $*/binutils/build && \
 		CFLAGS="$(CFLAGS)" \
 		CXXFLAGS="$(CXXFLAGS)" \
-		LDFLAGS="$(LDFLAGS)" \
 		SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
 		../src/configure $(BINUTILS_CONFIG)
 	touch $@
 
 %/.binutils.compiled: %/.binutils.configured
-	cd $*/binutils/build && $(MAKE)
+	cd $*/binutils/build && $(MAKE) MAKEINFO=true LDFLAGS="$(LDFLAGS)"
 	touch $@
 
 %/.binutils.installed: %/.binutils.compiled

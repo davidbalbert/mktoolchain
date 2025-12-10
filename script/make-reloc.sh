@@ -63,6 +63,11 @@ if [ ! -f "$SHIM_PATH" ]; then
     exit 1
 fi
 
+# Always use host-sysroot for the dynamic linker
+# For native compilers: host-sysroot → sysroot
+# For cross-compilers: host-sysroot → BUILD toolchain's sysroot
+SYSROOT_NAME="host-sysroot"
+
 while IFS= read -r -d '' binary; do
     if ! file "$binary" | grep -q "ELF.*executable"; then
         continue
@@ -107,7 +112,7 @@ while IFS= read -r -d '' binary; do
     for ((i=0; i<depth; i++)); do
         rpath_prefix+="../"
     done
-    rpath="\$ORIGIN/${rpath_prefix}sysroot/usr/lib"
+    rpath="\$ORIGIN/${rpath_prefix}${SYSROOT_NAME}/usr/lib"
 
     echo "  Setting rpath: $rpath"
     patchelf --set-rpath "$rpath" "$real_binary"

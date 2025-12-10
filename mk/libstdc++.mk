@@ -1,5 +1,3 @@
-bootstrap-libstdc++: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-
 $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
 $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BOOTSTRAP_BUILD_DIR)=.
 $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BOOTSTRAP_BUILD_DIR)=.

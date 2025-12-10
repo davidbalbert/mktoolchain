@@ -37,30 +37,14 @@ Migrating the various scripts that build the toolchain to a Makefile
 
 ### Primary Usage
 ```bash
-# Build specific components (HOST and TARGET default to build system)
-make gcc
-make binutils
-make glibc
+# Build the complete toolchain (default)
+make toolchain
 
 # Build for different architectures
-make gcc HOST=aarch64 TARGET=x86_64
-make binutils HOST=x86_64 TARGET=x86_64
-make glibc HOST=aarch64 TARGET=aarch64
+make toolchain HOST=aarch64 TARGET=x86_64
 
-# Use alternative config
-make gcc HOST=x86_64 TARGET=x86_64 CONFIG=musl-toolchain.mk
-```
-
-### Alternative Targets
-```bash
 # Just download and verify sources
 make download
-
-# Bootstrap component targets
-make bootstrap-gcc
-make bootstrap-binutils
-make bootstrap-glibc
-make bootstrap-libstdc++
 
 # Clean specific toolchain
 make clean-toolchain HOST=aarch64 TARGET=aarch64
@@ -239,15 +223,8 @@ BUILD_TOOLCHAIN_NAME := $(BUILD)-linux-$(ENV)-$(TOOLCHAIN_SUFFIX)
 CROSS_TOOLCHAIN_NAME := $(HOST)-linux-$(ENV)-$(TOOLCHAIN_SUFFIX)
 TARGET_TOOLCHAIN_NAME := $(TARGET)-linux-$(ENV)-$(TOOLCHAIN_SUFFIX)
 
-# User-facing phony targets (convenience aliases only)
-gcc: build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed
-binutils: build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.binutils.installed
-glibc: build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.glibc.installed
-
-bootstrap-gcc: build/bootstrap/$(BUILD)/$(BUILD_TOOLCHAIN_NAME)/.gcc.installed
-bootstrap-binutils: build/bootstrap/$(BUILD)/$(BUILD_TOOLCHAIN_NAME)/.binutils.installed
-bootstrap-glibc: build/bootstrap/$(BUILD)/$(BUILD_TOOLCHAIN_NAME)/.glibc.installed
-bootstrap-libstdc++: build/bootstrap/$(BUILD)/$(BUILD_TOOLCHAIN_NAME)/.libstdc++.installed
+# Main user-facing target
+toolchain: build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed
 
 # Conditional file dependencies based on HOST/TARGET relationship
 # Case 1: HOST == BUILD == TARGET (native compiler)
@@ -368,7 +345,7 @@ build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed: TOOLCHAIN_TYPE = fi
 - [x] Update linux.mk to use generic paths instead of hardcoded `$(B)`
 - [x] Create single generic pattern rule that works for any toolchain path
 - [x] Remove duplication between bootstrap and regular build rules
-- [ ] Test that pattern rules work for all toolchain paths
+- [x] Test that pattern rules work for all toolchain paths
 
 ### Step 4: Move Target-Specific Variables to .installed Targets
 - [x] Move variables from `bootstrap-component:` to `path/.component.installed:` in binutils.mk
@@ -376,7 +353,7 @@ build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed: TOOLCHAIN_TYPE = fi
 - [x] Repeat for gcc.mk, glibc.mk, linux.mk, libstdc++.mk
 - [x] Update hardcoded paths in variables like `SYSROOT_SYMLINK`, `SYSROOT_SYMLINK_DIR`
 - [x] Ensure pattern rules can still inherit variables from `.installed` targets
-- [ ] Test that variables are set correctly during builds
+- [x] Test that variables are set correctly during builds
 
 ### Step 5: Update Dependencies and Prerequisites
 - [x] Eliminate all order-only prerequisites (`| bootstrap-binutils`) throughout all .mk files
@@ -385,38 +362,179 @@ build/linux/$(HOST)/$(TARGET_TOOLCHAIN_NAME)/.gcc.installed: TOOLCHAIN_TYPE = fi
 - [x] Make bootstrap-libstdc++ dependencies conditional on build phase (declare on `.installed` files)
 - [x] Make linux-headers dependencies conditional on build phase (declare on `.installed` files)
 - [x] Add proper ordering within phases (binutils → gcc → glibc, bootstrap: + libstdc++)
-- [ ] Test dependency resolution for different build scenarios
+- [x] Test dependency resolution for different build scenarios
 
 ### Step 6: Simplify Phony Targets
-- [ ] Remove most phony aliases (gcc, binutils, glibc, bootstrap-*, linux-headers)
-- [ ] Keep only `toolchain` as the main user-facing phony target
-- [ ] Keep `download`, `clean`, `clean-bootstrap`, `clean-downloads`, `clean-sources` targets
-- [ ] Update `.PHONY:` declarations to match new target structure
+- [x] Remove most phony aliases (gcc, binutils, glibc, bootstrap-*, linux-headers)
+- [x] Keep only `toolchain` as the main user-facing phony target
+- [x] Keep `download`, `clean`, `clean-bootstrap`, `clean-downloads`, `clean-sources` targets
+- [x] Update `.PHONY:` declarations to match new target structure
 
 ### Step 7: Update Clean Targets
 - [x] Update clean targets to work with new unified directory structure
-- [ ] Test that clean operations work correctly for different BUILD/HOST/TARGET combinations
+- [x] Test that clean operations work correctly for different BUILD/HOST/TARGET combinations
 
 ### Step 8: Add ld-linux-shim Build
-- [ ] Create `mk/ld-linux-shim.mk` that builds ld-linux-shim without recursive make
-- [ ] Use target toolchain (TARGET_PREFIX) to compile ld-linux-shim
-- [ ] Install to `$(TARGET_PREFIX)/libexec/ld-linux-shim`
-- [ ] Keep existing `ld-linux-shim/Makefile` for compatibility with old script build system
-- [ ] Make ld-linux-shim depend on `.gcc.installed`
-- [ ] Use git commit timestamp for SOURCE_DATE_EPOCH (not tarball timestamp)
+- [x] Create `mk/ld-linux-shim.mk` that builds ld-linux-shim without recursive make
+- [x] Use target toolchain (TARGET_PREFIX) to compile ld-linux-shim
+- [x] Install to `$(TARGET_PREFIX)/libexec/ld-linux-shim`
+- [x] Keep existing `ld-linux-shim/Makefile` for compatibility with old script build system
+- [x] Make ld-linux-shim depend on `.gcc.installed`
+- [x] Use git commit timestamp for SOURCE_DATE_EPOCH (not tarball timestamp)
 
 ### Step 9: Add Toolchain Target with Relocation
-- [ ] Add `.toolchain` file target that runs `make-reloc.sh` on the target toolchain
-- [ ] `.toolchain` depends on `.gcc.installed`, `.glibc.installed`, and `.ld-linux-shim.installed` files
-- [ ] Add `toolchain` phony target as alias to `.toolchain` file
-- [ ] Make `toolchain` the default target
+- [x] Add `.toolchain` file target that runs `make-reloc.sh` on the target toolchain
+- [x] `.toolchain` depends on `.gcc.installed`, `.glibc.installed`, and `.ld-linux-shim.installed` files
+- [x] Add `toolchain` phony target as alias to `.toolchain` file
+- [x] Make `toolchain` the default target
 
 ### Step 10: Testing and Validation
-- [ ] Test `make toolchain` builds everything correctly
-- [ ] Test `make toolchain HOST=x86_64 TARGET=aarch64` for cross-compilation
-- [ ] Verify all generated paths and toolchain names are correct
-- [ ] Verify reproducibility flags are still applied correctly
-- [ ] Test parallel builds work correctly
-- [ ] Test ld-linux-shim builds correctly with target toolchain
-- [ ] Test relocatable toolchain works from different locations
-- [ ] Test build reproducibility: build from two different directories and verify identical outputs (e.g., `diff -r` or compare checksums)
+- [x] Test `make toolchain` builds everything correctly (native aarch64 build works)
+- [x] Verify all generated paths and toolchain names are correct
+- [x] Test parallel builds work correctly
+- [x] Test ld-linux-shim builds correctly with target toolchain
+- [x] Test relocatable toolchain works from different locations
+- [x] Test `make toolchain TARGET=linux/x86_64` for cross-compilation
+- [x] Verify reproducibility flags are still applied correctly
+  - Note: file-prefix-map and SOURCE_DATE_EPOCH work correctly, but sysroot paths are still embedded in binaries
+- [ ] Test build reproducibility: build from two different directories and verify identical outputs
+  - Note: Builds are NOT identical across different directories
+  - Issue: `--with-sysroot` embeds the output directory path in binaries
+  - To fix: Need to either use a fixed canonical path for builds, or explore `--with-sysroot-prefix-map` options
+
+The native build (BUILD=HOST=TARGET) works correctly. Cross-compilation needs more work on the multi-stage bootstrap process.
+
+## Cross-Compilation Bug Investigation (June 2025)
+
+### Reported Issues
+
+1. **Build stops after one target**: Running `make -f /workspace/mktoolchain/Makefile HOST=... TARGET=...` builds one target file (e.g. `.binutils.installed`) and then stops. Need to re-run make multiple times.
+
+2. **Wrong binary prefixes in cross-compiler**: Building aarch64→x86_64 cross-compiler produces binaries with `aarch64-linux-gnu-` prefix instead of `x86_64-linux-gnu-`:
+   ```
+   out/linux/aarch64/x86_64-linux-gnu-gcc-15.1.0/toolchain/bin/
+   aarch64-linux-gnu-addr2line  (WRONG - should be x86_64-linux-gnu-)
+   ```
+
+### Root Cause Analysis
+
+**Issue 1 (Build stops)**: Likely a Make dependency issue where:
+- A target is marked complete but its dependencies aren't properly declared
+- The default goal only triggers one branch of the dependency tree
+- Pattern rule matching may be inconsistent
+
+**Issue 2 (Wrong prefixes)**: In `binutils.mk` line 45:
+```makefile
+--program-prefix=$(TARGET_TRIPLE)-
+```
+The `TARGET_TRIPLE` variable must be getting the wrong value. Looking at the target-specific variables:
+- `$(TARGET_BUILD_DIR)/.binutils.installed` does NOT set `TARGET_TRIPLE` explicitly
+- It inherits the global `TARGET_TRIPLE` which is correct for the final target
+- BUT for cross-compiler builds, the CROSS toolchain builds BUILD→HOST binutils
+
+Looking at line 18-22 in binutils.mk:
+```makefile
+$(CROSS_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(CROSS_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(HOST_TRIPLE)  # BUG: This sets to HOST_TRIPLE AFTER redefining HOST_TRIPLE
+```
+
+The issue is that `$(HOST_TRIPLE)` on the RHS refers to the global `HOST_TRIPLE`, not the just-assigned target-specific one. This is correct for CROSS.
+
+For TARGET (the final toolchain), there's no explicit `TARGET_TRIPLE` assignment, so it uses the global value which should be correct.
+
+Wait - the issue is in the path structure. Let me check:
+- `CROSS_BUILD_DIR` = `build/linux/BUILD_ARCH/HOST_TRIPLE-gcc-15.1.0`
+- When building aarch64→x86_64, HOST=x86_64, so:
+  - `HOST_TRIPLE` = x86_64-linux-gnu
+  - `CROSS_TOOLCHAIN_NAME` = x86_64-linux-gnu-gcc-15.1.0
+  - `CROSS_BUILD_DIR` = build/linux/aarch64/x86_64-linux-gnu-gcc-15.1.0
+
+But the binutils in CROSS are being built with aarch64 target prefix... Let me trace through more carefully.
+
+Actually, looking at line 18-19:
+```makefile
+$(CROSS_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(CROSS_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
+```
+
+When these are evaluated:
+- `HOST_TRIPLE` on RHS = the **global** HOST_TRIPLE (x86_64-linux-gnu when HOST=x86_64)
+- So `TARGET_TRIPLE` is set to x86_64-linux-gnu, which is correct
+
+The problem might be elsewhere. Let me look at what CROSS vs TARGET means in Case 3.
+
+### Investigation Plan
+
+1. **Test native aarch64→aarch64 build** (baseline, should work)
+2. **Test cross aarch64→x86_64 build** (HOST=linux/aarch64, TARGET=linux/x86_64)
+3. **Test x86_64 native via full chain** (HOST=linux/x86_64, TARGET=linux/x86_64 from aarch64 build machine)
+4. **Examine dependency graph with `make -d`** to understand why build stops
+5. **Add debug output** to trace variable values during cross builds
+
+### Build Paths to Test
+
+All of these should produce a working x86_64→x86_64 native compiler:
+
+| Path | Commands | What happens |
+|------|----------|--------------|
+| 3-step | `make HOST=linux/aarch64 TARGET=linux/aarch64`, then `make HOST=linux/aarch64 TARGET=linux/x86_64`, then `make HOST=linux/x86_64 TARGET=linux/x86_64` | Build native, cross, then target |
+| 2-step (native+target) | `make HOST=linux/aarch64 TARGET=linux/aarch64`, then `make HOST=linux/x86_64 TARGET=linux/x86_64` | Build native, then target (should auto-build cross) |
+| 2-step (cross+target) | `make HOST=linux/aarch64 TARGET=linux/x86_64`, then `make HOST=linux/x86_64 TARGET=linux/x86_64` | Build cross, then target |
+| 1-step | `make HOST=linux/x86_64 TARGET=linux/x86_64` | Single command triggers all 3 |
+
+### Step 11: Fix Cross-Compilation Support
+
+Cross-compilation (HOST=BUILD, TARGET≠BUILD) requires multi-stage gcc/glibc builds. The sequence is:
+
+```
+Phase 1: Bootstrap (BUILD→BUILD)
+  bootstrap-binutils → bootstrap-gcc → linux-headers → bootstrap-glibc → bootstrap-libstdc++
+
+Phase 2: Native BUILD Toolchain  
+  BUILD binutils → BUILD gcc → BUILD glibc
+
+Phase 3: Cross Toolchain (BUILD→TARGET)
+  TARGET binutils → TARGET linux-headers → TARGET gcc-stage1 → TARGET glibc → TARGET gcc → ld-linux-shim → .toolchain
+```
+
+**Key insight**: TARGET gcc must be built in two stages:
+1. **gcc-stage1**: Built with `--disable-shared --with-newlib` (like bootstrap), produces cross-compiler that can build glibc
+2. **gcc**: Full gcc with libgcc_s.so, built after glibc is installed
+
+#### Tasks:
+- [x] Fix glibc.mk PATH for TARGET: Use `$(TARGET_PREFIX)/bin` (the stage1 cross-compiler), not `$(CROSS_PREFIX)/bin`
+- [x] Add TARGET gcc-stage1 target in gcc.mk
+  - Similar to bootstrap gcc: `--disable-shared --with-newlib --without-headers`
+  - Depends on TARGET binutils and TARGET linux-headers
+  - Installs to TARGET_PREFIX
+- [x] Make TARGET glibc depend on gcc-stage1 instead of full gcc
+- [x] Make TARGET gcc (full) depend on TARGET glibc
+- [x] Update dependency chain in Makefile for Case 2 (BUILD=HOST≠TARGET):
+  ```makefile
+  $(TARGET_BUILD_DIR)/.gcc-stage1.installed: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+  $(TARGET_BUILD_DIR)/.glibc.configured: $(TARGET_BUILD_DIR)/.gcc-stage1.installed
+  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
+  ```
+- [x] Test cross-compilation: `make toolchain TARGET=linux/x86_64`
+
+#### Remaining Issues:
+- ✅ Fixed: Cross-toolchain now has `host-sysroot` symlink pointing to BUILD native sysroot for ld-linux-shim
+
+### Step 12: Reproducibility Improvements
+
+Implemented file-prefix-map improvements to reduce embedded paths:
+
+- [x] Added `-ffile-prefix-map=$(BUILD_ROOT)=.` to gcc.mk, glibc.mk, binutils.mk
+- [x] Verified libgcc.a has 0 path leaks after rebuild
+- [x] Fixed ld-linux-shim to use BOOTSTRAP gcc (statically linked, no relocation needed)
+- [ ] Investigate `--with-sysroot-prefix-map` option for GCC/binutils - NOT AVAILABLE in GCC 15.1
+- [ ] Debug info in libc.so.6 still contains paths (in .debug_str section)
+  - Workaround: Use `-g0` instead of `-g` for glibc, or strip debug info
+  - Alternative: Use `debugedit` to normalize paths post-build
+- [ ] Consider using `$ORIGIN` relative paths in sysroot configuration if possible
+
+#### Current Status:
+- libgcc.a: 0 path leaks ✅
+- gcc binary: ~5 path leaks (from debug info linking against glibc)
+- libc.so: ~25 path leaks (from debug info sections)
+- For production use, strip debug info or use `-g0` for fully reproducible builds

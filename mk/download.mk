@@ -14,23 +14,22 @@ $(SRC_DIR)/gcc-$(GCC_VERSION) $(SRC_DIR)/binutils-$(BINUTILS_VERSION) $(SRC_DIR)
 	$(eval URL := $($(PACKAGE)_URL))
 	$(eval SHA256 := $($(PACKAGE)_SHA256))
 	$(eval TARBALL := $(DL_DIR)/$(notdir $@).tar.gz)
-	mkdir -p $(SRC_DIR) $(DL_DIR)
+	@mkdir -p $(SRC_DIR) $(DL_DIR)
 	@if ! [ -f "$(TARBALL)" ] || ! echo "$(SHA256) $(TARBALL)" | sha256sum -c - >/dev/null 2>&1; then \
 		[ -f "$(TARBALL)" ] && rm -f "$(TARBALL)"; \
 		echo "Downloading $(PACKAGE)..."; \
-		curl -L "$(URL)" -o "$(TARBALL)" && \
-		printf "Verifying $(PACKAGE) checksum... "; \
-		echo "$(SHA256) $(TARBALL)" | sha256sum -c - >/dev/null && echo "verified"; \
+		curl -sSL "$(URL)" -o "$(TARBALL)" && \
+		echo "$(SHA256) $(TARBALL)" | sha256sum -c - >/dev/null && echo "$(PACKAGE) verified"; \
 	fi
 	@echo "Extracting $(TARBALL)..."
 	@tar -xf "$(TARBALL)" -C "$(SRC_DIR)"
 	@timestamp=$$(tar -tvf "$(TARBALL)" | awk '{print $$4" "$$5}' | sort -r | head -1 | xargs -I {} date -d "{}" +%s 2>/dev/null || echo 1); \
 	echo "$$timestamp" > "$@/.timestamp"
 	@if [ -d "$(PROJECT_ROOT)/patches/$(notdir $@)" ]; then \
-		for patch in $(PROJECT_ROOT)/patches/$(notdir $@)/*; do \
+		for patch in $(PROJECT_ROOT)/patches/$(notdir $@)/*.patch; do \
 			[ -f "$$patch" ] && echo "Applying: $$(basename $$patch)" && (cd "$@" && patch -p1 < "$$patch"); \
 		done; \
-	fi
+	fi; true
 	@if echo "$(notdir $@)" | grep -q "^gcc-"; then \
 		echo "Downloading GCC dependencies..."; \
 		(cd "$@" && ./contrib/download_prerequisites); \

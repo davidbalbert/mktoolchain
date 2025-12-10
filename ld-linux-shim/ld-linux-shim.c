@@ -6,7 +6,7 @@
 // 3. ln -s ../libexec/ld-linux-shim $ROOT/bin/foo
 //
 // Your dynamic linker (ld-linux-x86_64.so.2, etc.) should be installed
-// in $ROOT/sysroot/usr/lib.
+// in $ROOT/host-sysroot/usr/lib.
 
 
 #include <stddef.h>
@@ -195,7 +195,7 @@ main(int argc, char *argv[]) {
         panic("AT_EXECFN not found");
     }
 
-    if (strlcat(ld_path, "/sysroot/usr/lib/" LD_LINUX, PATH_MAX) >= PATH_MAX ||
+    if (strlcat(ld_path, "/host-sysroot/usr/lib/" LD_LINUX, PATH_MAX) >= PATH_MAX ||
         strlcpy(bin_path, execfn, PATH_MAX) >= PATH_MAX ||
         strlcat(bin_path, ".real", PATH_MAX) >= PATH_MAX) {
         panic("path too long");

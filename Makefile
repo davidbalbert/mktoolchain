@@ -72,20 +72,91 @@ include $(PROJECT_ROOT)/mk/*.mk
 
 # Phase dependency chains
 # Case 1: Native build (BUILD = HOST = TARGET)
+# No gcc-stage1 needed - bootstrap gcc can compile glibc directly
 ifeq ($(BUILD)_$(HOST)_$(TARGET),$(BUILD)_$(BUILD)_$(BUILD))
   $(TARGET_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+  # binutils.compiled needs glibc installed so DYNAMIC_LINKER can find ld-linux
+  $(TARGET_BUILD_DIR)/.binutils.compiled: $(TARGET_BUILD_DIR)/.glibc.installed
+  $(TARGET_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+  $(TARGET_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(TARGET_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  # Bootstrap GCC has no libgcc_s, so force C version of links-dso-program
+  $(TARGET_BUILD_DIR)/.glibc.compiled: $(TARGET_BUILD_DIR)/.glibc.configured
+	cd $(TARGET_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	touch $@
+  $(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
 # Case 2: Cross-compiler for build system (BUILD = HOST ≠ TARGET)
+# gcc-stage1 provides cross-compiler for building TARGET glibc
 else ifeq ($(HOST),$(BUILD))
+  # BUILD native toolchain - same as Case 1, use bootstrap gcc for glibc
   $(BUILD_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(TARGET_BUILD_DIR)/.binutils.configured: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(BUILD_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+  $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
+	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	touch $@
+  $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed
+  # TARGET cross-compiler
+  $(TARGET_BUILD_DIR)/.binutils.installed: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(TARGET_BUILD_DIR)/.gcc-stage1.configured: $(BUILD_BUILD_DIR)/.glibc.installed
+  # gcc-stage1 builds libgcc which needs glibc headers in TARGET sysroot
+  $(TARGET_BUILD_DIR)/.gcc-stage1.compiled: $(TARGET_BUILD_DIR)/.glibc-headers.installed
+  $(TARGET_BUILD_DIR)/.glibc.configured: $(TARGET_BUILD_DIR)/.gcc-stage1.installed
+  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
 # Case 3: Native or cross-compilation to different host (BUILD ≠ HOST)
 else
+  # BUILD native toolchain - same as Case 1 & 2, use bootstrap gcc for glibc
   $(BUILD_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(CROSS_BUILD_DIR)/.binutils.configured: $(BUILD_BUILD_DIR)/.glibc.installed
-  $(TARGET_BUILD_DIR)/.binutils.configured: $(CROSS_BUILD_DIR)/.glibc.installed
+  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(BUILD_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+  $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
+	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	touch $@
+  $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+  $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed
+  # CROSS toolchain (BUILD→HOST)
+  $(CROSS_BUILD_DIR)/.binutils.installed: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(CROSS_BUILD_DIR)/.gcc-stage1.configured: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(CROSS_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc-stage1.installed
+  $(CROSS_BUILD_DIR)/.gcc.configured: $(CROSS_BUILD_DIR)/.glibc.installed
+  # TARGET toolchain (HOST→TARGET, built using CROSS compiler)
+  $(TARGET_BUILD_DIR)/.binutils.installed: $(CROSS_BUILD_DIR)/.glibc.installed
+  $(TARGET_BUILD_DIR)/.gcc-stage1.configured: $(CROSS_BUILD_DIR)/.glibc.installed
+  $(TARGET_BUILD_DIR)/.glibc.configured: $(TARGET_BUILD_DIR)/.gcc-stage1.installed
+  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
 endif
 
-.PHONY: download clean test-parallel bootstrap-binutils bootstrap-gcc bootstrap-glibc bootstrap-libstdc++ linux-headers binutils gcc glibc
+# Host-sysroot symlink for ALL toolchains
+# For native compilers (HOST == TARGET): host-sysroot → sysroot
+# For cross-compilers (HOST != TARGET): host-sysroot → ../../$(BUILD_TOOLCHAIN_NAME)/sysroot
+# This allows ld-linux-shim to always use host-sysroot to find the HOST glibc
+ifeq ($(HOST_TRIPLE),$(TARGET_TRIPLE))
+$(TARGET_BUILD_DIR)/.host-sysroot.installed: $(TARGET_BUILD_DIR)/.gcc.installed
+	ln -sfn sysroot $(TARGET_PREFIX)/host-sysroot
+	touch $@
+else
+$(TARGET_BUILD_DIR)/.host-sysroot.installed: $(BUILD_BUILD_DIR)/.glibc.installed $(TARGET_BUILD_DIR)/.gcc.installed
+	ln -sfn ../../$(BUILD_TOOLCHAIN_NAME)/sysroot $(TARGET_PREFIX)/host-sysroot
+	touch $@
+endif
+
+TOOLCHAIN_DEPS := $(TARGET_BUILD_DIR)/.gcc.installed $(TARGET_BUILD_DIR)/.glibc.installed $(TARGET_BUILD_DIR)/.ld-linux-shim.installed $(TARGET_BUILD_DIR)/.host-sysroot.installed
+
+.DEFAULT_GOAL := toolchain
+
+.PHONY: toolchain download clean test-parallel
+
+toolchain: $(TARGET_BUILD_DIR)/.toolchain
+
+$(TARGET_BUILD_DIR)/.toolchain: $(TOOLCHAIN_DEPS)
+	$(PROJECT_ROOT)/script/make-reloc.sh $(TARGET_PREFIX)
+	touch $@
 
 clean:
 	rm -rf $(BUILD_DIR) $(OUT_DIR)

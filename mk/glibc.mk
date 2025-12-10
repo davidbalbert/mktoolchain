@@ -1,12 +1,8 @@
-bootstrap-glibc: $(BOOTSTRAP_BUILD_DIR)/.glibc.installed
-glibc: $(TARGET_BUILD_DIR)/.glibc.installed
-
-%/.glibc.installed: CFLAGS := -O2 -g -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$*=.
-%/.glibc.installed: CXXFLAGS := -O2 -g -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$*=.
+GLIBC_BASE_FLAGS := -O2 -g -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
 %/.glibc.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/glibc-$(GLIBC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
 $(TARGET_BUILD_DIR)/.glibc.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(CROSS_PREFIX)/bin:$(ORIG_PATH)
+$(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(TARGET_PREFIX)/bin:$(ORIG_PATH)
 $(TARGET_BUILD_DIR)/.glibc.installed: $(TARGET_BUILD_DIR)/.linux-headers.installed
 
 $(CROSS_BUILD_DIR)/.glibc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
@@ -37,16 +33,40 @@ GLIBC_CONFIG = \
 	--with-headers=$(SYSROOT)/usr/include \
 	libc_cv_slibdir=/usr/lib
 
-.PRECIOUS: %/.glibc.configured %/.glibc.compiled
+.PRECIOUS: %/.glibc.configured %/.glibc.compiled %/.glibc.installed %/.glibc-headers.installed
 
-%/.glibc.configured: $(SRC_DIR)/glibc-$(GLIBC_VERSION) %/.gcc.installed
+# Install just glibc headers (needed before building gcc with libgcc in Canadian Cross)
+# Uses the bootstrap-style cross-gcc (without libgcc) to configure glibc and install headers
+$(TARGET_BUILD_DIR)/.glibc-headers.installed: SYSROOT := $(TARGET_SYSROOT)
+$(TARGET_BUILD_DIR)/.glibc-headers.installed: PATH := $(TARGET_PREFIX)/bin:$(CROSS_PREFIX)/bin:$(ORIG_PATH)
+$(TARGET_BUILD_DIR)/.glibc-headers.installed: $(SRC_DIR)/glibc-$(GLIBC_VERSION) $(TARGET_BUILD_DIR)/.linux-headers.installed $(TARGET_BUILD_DIR)/.bootstrap-gcc.installed
+	mkdir -p $(TARGET_BUILD_DIR)/glibc-headers/build $(SYSROOT)/usr/include
+	ln -sfn $(SRC_DIR)/glibc-$(GLIBC_VERSION) $(TARGET_BUILD_DIR)/glibc-headers/src
+	cd $(TARGET_BUILD_DIR)/glibc-headers/build && \
+		../src/configure $(GLIBC_CONFIG)
+	cd $(TARGET_BUILD_DIR)/glibc-headers/build && $(MAKE) install-headers DESTDIR=$(SYSROOT)
+	touch $(SYSROOT)/usr/include/gnu/stubs.h
+	touch $@
+
+$(BOOTSTRAP_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.gcc.installed
+# BUILD, CROSS, and TARGET glibc dependencies are set conditionally in Makefile based on build type
+# (In Case 1, all three are equal and use bootstrap gcc instead of build gcc)
+
+%/.glibc.configured: $(SRC_DIR)/glibc-$(GLIBC_VERSION)
 	mkdir -p $*/glibc/build $(SYSROOT)
 	ln -sfn $(SRC_DIR)/glibc-$(GLIBC_VERSION) $*/glibc/src
 	cd $*/glibc/build && \
-		CFLAGS="$(CFLAGS)" \
-		CXXFLAGS="$(CXXFLAGS)" \
+		CFLAGS="$(GLIBC_BASE_FLAGS) -ffile-prefix-map=$*/glibc=." \
+		CXXFLAGS="$(GLIBC_BASE_FLAGS) -ffile-prefix-map=$*/glibc=." \
 		SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
 		../src/configure $(GLIBC_CONFIG)
+	touch $@
+
+# Bootstrap glibc needs CXX= to force glibc to build links-dso-program-c (C version)
+# instead of links-dso-program (C++ version). The C++ version requires -lgcc_s which
+# doesn't exist with bootstrap GCC (built with --disable-shared).
+$(BOOTSTRAP_BUILD_DIR)/.glibc.compiled: $(BOOTSTRAP_BUILD_DIR)/.glibc.configured
+	cd $(BOOTSTRAP_BUILD_DIR)/glibc/build && $(MAKE) CXX=
 	touch $@
 
 %/.glibc.compiled: %/.glibc.configured
