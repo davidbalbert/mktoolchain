@@ -55,6 +55,10 @@ TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
 
 echo "Making binaries relocatable in $TARGET_DIR..."
 
+# Delete libtool .la files - they contain hardcoded build paths and are not needed
+echo "Removing .la files..."
+find "$TARGET_DIR" -name "*.la" -type f -delete
+
 # Get the built shim
 SHIM_PATH="$TARGET_DIR/libexec/ld-linux-shim"
 
@@ -67,6 +71,9 @@ fi
 # For native compilers: host-sysroot → sysroot
 # For cross-compilers: host-sysroot → BUILD toolchain's sysroot
 SYSROOT_NAME="host-sysroot"
+
+# The placeholder RPATH used during build (must match Makefile)
+RPATH_PLACEHOLDER="/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
 while IFS= read -r -d '' binary; do
     if ! file "$binary" | grep -q "ELF.*executable"; then
@@ -115,6 +122,7 @@ while IFS= read -r -d '' binary; do
     rpath="\$ORIGIN/${rpath_prefix}${SYSROOT_NAME}/usr/lib"
 
     echo "  Setting rpath: $rpath"
+    # Directly set new rpath (placeholders are fixed-length so no --remove-rpath needed)
     patchelf --set-rpath "$rpath" "$real_binary"
 
     # Set interpreter to non-existent path to force use of our shim
@@ -124,5 +132,39 @@ while IFS= read -r -d '' binary; do
     touch -h -d "@$original_timestamp" "$binary"
     touch -h -d "@$original_timestamp" "$real_binary"
 done < <(find "$TARGET_DIR" -type f -name "*.real" -prune -o -type f -print0)
+
+# Also fix RPATH in shared libraries that have the placeholder
+echo "Fixing shared library RPATHs..."
+while IFS= read -r -d '' lib; do
+    if ! file "$lib" | grep -q "ELF.*shared object"; then
+        continue
+    fi
+
+    # Check if it has our placeholder in the RPATH
+    current_rpath=$(patchelf --print-rpath "$lib" 2>/dev/null || true)
+    if [[ "$current_rpath" != *"$RPATH_PLACEHOLDER"* ]] && [[ "$current_rpath" != *"/workspaces/"* ]]; then
+        continue
+    fi
+
+    rel_path="${lib#$TARGET_DIR/}"
+    echo "Processing shared library $rel_path"
+
+    original_timestamp=$(stat -c %Y "$lib")
+
+    # Calculate depth for $ORIGIN-relative path
+    depth=$(echo "$rel_path" | tr -cd '/' | wc -c)
+    rpath_prefix=""
+    for ((i=0; i<depth; i++)); do
+        rpath_prefix+="../"
+    done
+    rpath="\$ORIGIN/${rpath_prefix}${SYSROOT_NAME}/usr/lib"
+
+    echo "  Setting rpath: $rpath"
+    # Remove old RPATH entirely and add new one - this normalizes the section
+    patchelf --remove-rpath "$lib"
+    patchelf --set-rpath "$rpath" "$lib"
+
+    touch -h -d "@$original_timestamp" "$lib"
+done < <(find "$TARGET_DIR" -type f \( -name "*.so" -o -name "*.so.*" \) -print0)
 
 echo "Relocatable binaries created in $TARGET_DIR"

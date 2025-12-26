@@ -66,6 +66,23 @@ BUILD_SYSROOT := $(BUILD_OUT_DIR)/sysroot
 CROSS_SYSROOT := $(CROSS_OUT_DIR)/sysroot
 TARGET_SYSROOT := $(TARGET_OUT_DIR)/sysroot
 
+# Fixed-length placeholder rpath for reproducibility (patchelf will replace with $ORIGIN-relative path)
+RPATH_PLACEHOLDER := /XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Fixed-length symlink path for dynamic linker - ensures identical ELF section sizes regardless of build directory
+# The actual symlink is created before building native toolchain and points to the real ld-linux
+INTERP_SYMLINK := /tmp/ld-shim-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Rule to create the interpreter symlink (used only for BUILD=HOST=TARGET native builds)
+# This creates a fixed-length path that points to the real dynamic linker
+$(BUILD_BUILD_DIR)/.interp-symlink.installed: $(BUILD_BUILD_DIR)/.glibc.installed
+	@REAL_INTERP=$$(find $(BUILD_SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f | head -n 1); \
+	if [ -n "$$REAL_INTERP" ]; then \
+		ln -sfn "$$REAL_INTERP" "$(INTERP_SYMLINK)"; \
+		echo "Created interpreter symlink: $(INTERP_SYMLINK) -> $$REAL_INTERP"; \
+	fi
+	touch $@
+
 include $(PROJECT_ROOT)/mk/*.mk
 
 # Conditional dependency chains based on build scenario
@@ -75,14 +92,14 @@ include $(PROJECT_ROOT)/mk/*.mk
 # No gcc-stage1 needed - bootstrap gcc can compile glibc directly
 ifeq ($(BUILD)_$(HOST)_$(TARGET),$(BUILD)_$(BUILD)_$(BUILD))
   $(TARGET_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  # binutils.compiled needs glibc installed so DYNAMIC_LINKER can find ld-linux
-  $(TARGET_BUILD_DIR)/.binutils.compiled: $(TARGET_BUILD_DIR)/.glibc.installed
+  # binutils.compiled needs glibc installed and the interpreter symlink created
+  $(TARGET_BUILD_DIR)/.binutils.compiled: $(TARGET_BUILD_DIR)/.interp-symlink.installed
   $(TARGET_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
   $(TARGET_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(TARGET_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   # Bootstrap GCC has no libgcc_s, so force C version of links-dso-program
   $(TARGET_BUILD_DIR)/.glibc.compiled: $(TARGET_BUILD_DIR)/.glibc.configured
-	cd $(TARGET_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
+	cd $(TARGET_BUILD_DIR)/glibc/build && $(MAKE) CXX=
 	touch $@
   $(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
@@ -91,12 +108,12 @@ ifeq ($(BUILD)_$(HOST)_$(TARGET),$(BUILD)_$(BUILD)_$(BUILD))
 else ifeq ($(HOST),$(BUILD))
   # BUILD native toolchain - same as Case 1, use bootstrap gcc for glibc
   $(BUILD_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.interp-symlink.installed
   $(BUILD_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
   $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
-	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
+	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
 	touch $@
   $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed
@@ -111,12 +128,12 @@ else ifeq ($(HOST),$(BUILD))
 else
   # BUILD native toolchain - same as Case 1 & 2, use bootstrap gcc for glibc
   $(BUILD_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.glibc.installed
+  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.interp-symlink.installed
   $(BUILD_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
   $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
-	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX= CREATE_ARFLAGS=Dcru
+	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
 	touch $@
   $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
   $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed

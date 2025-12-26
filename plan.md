@@ -490,7 +490,7 @@ Cross-compilation (HOST=BUILD, TARGET≠BUILD) requires multi-stage gcc/glibc bu
 Phase 1: Bootstrap (BUILD→BUILD)
   bootstrap-binutils → bootstrap-gcc → linux-headers → bootstrap-glibc → bootstrap-libstdc++
 
-Phase 2: Native BUILD Toolchain  
+Phase 2: Native BUILD Toolchain
   BUILD binutils → BUILD gcc → BUILD glibc
 
 Phase 3: Cross Toolchain (BUILD→TARGET)
@@ -552,3 +552,140 @@ Both native (aarch64→aarch64) and cross-compiler (aarch64→x86_64) toolchains
 - gcc binary: ✅ Identical (ELF binary)
 - ld binary: ✅ Identical (ELF binary)
 - libgcc.a: Needs deterministic ar flags (timestamps differ)
+
+### Summary of Reproducibility Work (December 2024)
+
+#### Fixes Applied:
+1. **glibc**: Changed from `-g` to `-g0` to eliminate debug info paths
+2. **gcc-stage1**: Added `CFLAGS="-g0 -O2"` and `LIBGCC2_DEBUG_CFLAGS=-g0` to build libgcc without debug info
+3. **Deterministic archives**:
+   - gcc: `AR_CREATE_FOR_TARGET=$(AR_FOR_TARGET) Drc`
+   - glibc: `CREATE_ARFLAGS=Dcru`
+   - binutils: `AR_FLAGS=Drc`
+
+#### Results:
+- **All ELF binaries** (libc.so.6, gcc, g++, ld) are **byte-for-byte identical** when built from different directories
+- **All binaries** have **zero path leaks** (verified with `strings | grep`)
+- **Archive files** (.a) need the deterministic ar flags to have epoch-0 timestamps
+
+#### Remaining:
+- Full clean build from two different directories to verify everything works together with the archive reproducibility fixes
+- The `--with-sysroot-prefix-map` option is not available in GCC 15.1
+
+#### Tips for Long Builds:
+The heartbeat pattern prevents the 300s Bash inactivity timeout:
+```bash
+(while true; do sleep 60; echo -n "."; done) &
+HEARTBEAT_PID=$!
+make -f /workspaces/mktoolchain/Makefile toolchain > logs/build.log 2>&1
+kill $HEARTBEAT_PID 2>/dev/null
+```
+
+Always redirect build output to log files (don't use `tee`). Check logs with `tail -20 logs/build.log`.
+
+## Reproducibility Verification (December 2024)
+
+### Verified Reproducible
+The following key binaries are **byte-for-byte identical** when built from different directories:
+
+| Binary | Status |
+|--------|--------|
+| libc.so.6 | ✅ Reproducible |
+| gcc | ✅ Reproducible |
+| g++ | ✅ Reproducible |
+| ld | ✅ Reproducible |
+| libgcc.a | ✅ Reproducible |
+| libgcc_eh.a | ✅ Reproducible |
+| libgcc_s.so.1 | ✅ Reproducible |
+| as | ✅ Reproducible |
+| ar | ✅ Reproducible |
+| ranlib | ✅ Reproducible |
+| ld-linux-shim | ✅ Reproducible |
+
+### Fixes Applied for libgcc Archives
+1. Modified gcc.mk to patch `AR_CREATE_FOR_TARGET` in libgcc/Makefile from `rc` to `Drc`
+2. Added `RANLIB_FOR_TARGET=$(RANLIB) -D` to make commands to use deterministic ranlib
+
+### Remaining Non-Reproducible Items
+- **libc.a** and other glibc static archives have non-deterministic symbol table timestamps
+- **libstdc++.a** archives may have similar issues
+- These only affect static linking and are not critical for most use cases
+
+## Reproducibility Verification (December 2024 - Phase 2)
+
+### Current Status: 100% Reproducible ✅
+
+| Metric | Count |
+|--------|-------|
+| Total files | 6,529 |
+| Matching files | 6,529 |
+| Differing files | 0 |
+
+### Fixes Applied in This Phase
+
+#### 1. Fixed-length interpreter symlink (`INTERP_SYMLINK`)
+
+**Problem**: ELF executables embed the path to the dynamic linker (ld-linux) in their `.interp` section. When we link binaries with `--dynamic-linker=/path/to/ld-linux`, that path gets embedded. If the build directory path differs (e.g., `/workspaces/buildroot` vs `/workspaces/buildroot2`), the `.interp` section has different lengths, making the entire ELF file layout differ.
+
+**Solution**: Create a fixed-length symlink at `/tmp/ld-shim-XXX...XXX` (exactly 128 characters) that points to the real ld-linux. All binaries use this symlink as their interpreter. Since the symlink path is always the same length, ELF section layouts are identical regardless of the actual build directory.
+
+**Location**: `Makefile` lines 74-84, used via `$(INTERP_SYMLINK)` in LDFLAGS
+
+#### 2. Disabled build-id for bootstrap (`--build-id=none`)
+
+**Problem**: GCC's GNU build-id is a hash computed from the binary's contents during linking. The hash includes things like timestamps or ordering that can vary between builds, making bootstrap binaries non-reproducible.
+
+**Solution**: Pass `-Wl,--build-id=none` in LDFLAGS for bootstrap builds to disable build-id generation entirely.
+
+**Location**: `mk/binutils.mk` lines 6-7, `mk/gcc.mk` lines 10-11
+
+#### 3. Delete .la files
+
+**Problem**: Libtool generates `.la` files (libtool archives) that contain hardcoded absolute paths in their `dependency_libs=` field. For example: `dependency_libs=' -L/workspaces/buildroot/out/.../lib -lz'`. These paths differ between build directories.
+
+**Solution**: Delete all `.la` files during installation. They're only needed for linking during the build process and are not required at runtime or for using the installed toolchain.
+
+**Location**: `mk/binutils.mk` line 79, `script/make-reloc.sh` lines 59-60
+
+#### 4. Normalize checksum-options
+
+**Problem**: GCC embeds an "executable checksum" in cc1/cc1plus binaries for precompiled header (PCH) compatibility checking. This checksum is computed by `genchecksum` from object files AND a `checksum-options` file. The `checksum-options` file contains the linker command line, which includes `-ffile-prefix-map=/workspaces/buildroot=.`. Since the actual build path appears in this file, the checksum differs between builds from different directories.
+
+**Solution**: After running `configure-gcc`, patch the generated `gcc/Makefile` to replace the rule that creates `checksum-options`. Instead of writing the actual linker flags, it now writes the fixed string "deterministic". We also delete any existing `checksum-options` file to ensure it gets regenerated with the new rule.
+
+**Location**: `mk/gcc.mk` lines 134-135:
+```makefile
+sed -i '/^checksum-options:/,/move-if-change/{s|echo "\$$(LINKER).*"|echo "deterministic"|g}' gcc/Makefile && \
+rm -f gcc/checksum-options && \
+```
+
+#### 5. Disable libcc1 (`--disable-libcc1`)
+
+**Problem**: The libcc1 library (used for GDB's `compile` command) was built with libtool, which hardcodes library search paths into the RPATH. Specifically, libtool sets `hardcode_into_libs=yes` and adds the bootstrap compiler's library path (e.g., `/workspaces/buildroot/out/bootstrap/.../lib64`) to the RPATH. Since this path differs between builds, the resulting `.so` files have different RPATH string lengths, causing the entire ELF string table section to differ.
+
+We tried several fixes:
+- Patching libtool's `hardcode_into_libs=no` - didn't work because libtool is generated during the build
+- Using patchelf to normalize RPATH - didn't work because patchelf doesn't shrink ELF sections, just fills with padding
+- Using objcopy to extract/rebuild sections - code sections were identical but metadata sections still differed
+
+**Solution**: Disable libcc1 entirely with `--disable-libcc1` in GCC's configure. libcc1 is only used for GDB's `compile` command (which allows compiling C expressions at the GDB prompt), a feature that's rarely used in practice.
+
+**Location**: `mk/gcc.mk` line 108:
+```makefile
+GCC_FINAL_CONFIG = \
+    --enable-host-pie \
+    --disable-fixincludes \
+    --disable-libcc1
+```
+
+### Summary of File Changes
+
+| File | Change |
+|------|--------|
+| `mk/binutils.mk:79` | Delete .la files during install |
+| `mk/gcc.mk:10-11` | `--build-id=none` for bootstrap LDFLAGS |
+| `mk/gcc.mk:108` | `--disable-libcc1` in GCC_FINAL_CONFIG |
+| `mk/gcc.mk:134-135` | Normalize checksum-options content |
+| `script/make-reloc.sh:59-60` | Delete .la files |
+| `script/make-reloc.sh:136-168` | Fix shared library RPATHs |
+| `Makefile:74-84` | Fixed-length INTERP_SYMLINK |

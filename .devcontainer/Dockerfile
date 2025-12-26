@@ -12,4 +12,5 @@ RUN apt-get update && apt-get install -y \
     procps \
     python3 \
     rsync \
+    xxd \
     && rm -rf /var/lib/apt/lists/*

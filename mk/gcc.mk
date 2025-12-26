@@ -1,18 +1,21 @@
-%/.gcc.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
-%/.gcc.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+%/.gcc.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.gcc.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
 %/.gcc.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
 %/.gcc.installed: SYSROOT_SYMLINK = ../sysroot
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT_SYMLINK := ../../../../$(BUILD)/$(BUILD_TOOLCHAIN_NAME)/sysroot
 
+# LDFLAGS for bootstrap - disable build-id to ensure reproducibility
+# (build-id is computed from inputs which may contain paths)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: LDFLAGS := -Wl,--build-id=none
+$(BOOTSTRAP_BUILD_DIR)/.gcc.compiled: LDFLAGS := -Wl,--build-id=none
+
 # LDFLAGS only for native builds (BUILD=HOST=TARGET) to link against our sysroot
 # Cross-compilers don't need this as build tools must run on build machine
 %/.gcc.installed: LDFLAGS :=
 %/.gcc.compiled: LDFLAGS :=
-$(BUILD_BUILD_DIR)/.gcc.installed: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1)
-$(BUILD_BUILD_DIR)/.gcc.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
-$(BUILD_BUILD_DIR)/.gcc.compiled: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1)
-$(BUILD_BUILD_DIR)/.gcc.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
+$(BUILD_BUILD_DIR)/.gcc.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(BUILD_BUILD_DIR)/.gcc.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
 
 # TARGET gcc: runs on BUILD, targets TARGET (cross-compiler)
 $(TARGET_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
@@ -101,7 +104,8 @@ GCC_BOOTSTRAP_CONFIG = \
 
 GCC_FINAL_CONFIG = \
 	--enable-host-pie \
-	--disable-fixincludes
+	--disable-fixincludes \
+	--disable-libcc1
 
 .PRECIOUS: %/.gcc.configured %/.gcc.compiled %/.gcc.installed
 
@@ -126,9 +130,12 @@ endif
 
 %/.gcc.compiled: %/.gcc.configured
 	cd $*/gcc/build && \
-		$(MAKE) configure-gcc && \
+		$(MAKE) configure-gcc configure-target-libgcc && \
 		sed -i 's/ --with-build-sysroot=[^"]*//; s/ --with-build-time-tools=[^"]*//' gcc/configargs.h && \
-		$(MAKE) LDFLAGS="$(LDFLAGS)" LIBGCC2_DEBUG_CFLAGS=-g0 'AR_CREATE_FOR_TARGET=$$(AR_FOR_TARGET) Drc'
+		sed -i '/^checksum-options:/,/move-if-change/{s|echo "\$$(LINKER).*"|echo "deterministic"|g}' gcc/Makefile && \
+		rm -f gcc/checksum-options && \
+		if [ -f libcc1/libtool ]; then sed -i 's/^hardcode_into_libs=yes$$/hardcode_into_libs=no/' libcc1/libtool; fi && \
+		$(MAKE) LDFLAGS="$(LDFLAGS)" LIBGCC2_DEBUG_CFLAGS=-g0
 	touch $@
 
 %/.gcc.installed: %/.gcc.compiled
@@ -174,8 +181,8 @@ endif
 	touch $@
 
 # gcc-stage1 rules (bootstrap-style gcc for TARGET, builds gcc + libgcc only)
-%/.gcc-stage1.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
-%/.gcc-stage1.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+%/.gcc-stage1.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.gcc-stage1.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
 %/.gcc-stage1.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
 .PRECIOUS: %/.gcc-stage1.configured %/.gcc-stage1.compiled %/.gcc-stage1.installed
@@ -195,8 +202,8 @@ endif
 	cd $*/gcc-stage1/build && \
 		$(MAKE) configure-gcc && \
 		sed -i 's/ --with-build-sysroot=[^"]*//; s/ --with-build-time-tools=[^"]*//' gcc/configargs.h && \
-		$(MAKE) all-gcc && \
-		$(MAKE) -C $(TARGET_TRIPLE)/libgcc CFLAGS="-g0 -O2" LIBGCC2_DEBUG_CFLAGS=-g0 'AR_CREATE_FOR_TARGET=$$(AR_FOR_TARGET) Drc'
+		$(MAKE) all-gcc configure-target-libgcc && \
+		$(MAKE) -C $(TARGET_TRIPLE)/libgcc CFLAGS="-g0 -O2" LIBGCC2_DEBUG_CFLAGS=-g0
 	touch $@
 
 %/.gcc-stage1.installed: %/.gcc-stage1.compiled

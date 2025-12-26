@@ -1,15 +1,17 @@
-%/.binutils.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
-%/.binutils.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=.
+%/.binutils.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.binutils.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
 %/.binutils.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/binutils-$(BINUTILS_VERSION)/.timestamp 2>/dev/null || echo 1)
+
+# LDFLAGS for bootstrap - disable build-id to ensure reproducibility
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: LDFLAGS := -Wl,--build-id=none
+$(BOOTSTRAP_BUILD_DIR)/.binutils.compiled: LDFLAGS := -Wl,--build-id=none
 
 # LDFLAGS only for native builds (BUILD=HOST=TARGET) to link against our sysroot
 # Cross-compilers don't need this as build tools must run on build machine
 %/.binutils.installed: LDFLAGS :=
 %/.binutils.compiled: LDFLAGS :=
-$(BUILD_BUILD_DIR)/.binutils.installed: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1)
-$(BUILD_BUILD_DIR)/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
-$(BUILD_BUILD_DIR)/.binutils.compiled: DYNAMIC_LINKER = $(shell find $(SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f -printf "%f\n" | head -n 1)
-$(BUILD_BUILD_DIR)/.binutils.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(SYSROOT)/usr/lib -Wl,--dynamic-linker=$(SYSROOT)/usr/lib/$(DYNAMIC_LINKER)
+$(BUILD_BUILD_DIR)/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(BUILD_BUILD_DIR)/.binutils.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
 
 $(TARGET_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(HOST_TRIPLE)
 $(TARGET_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(TARGET_TRIPLE)
@@ -47,6 +49,7 @@ BINUTILS_CONFIG = \
 	--program-prefix=$(TARGET_TRIPLE)- \
 	--disable-shared \
 	--enable-new-dtags \
+	--enable-deterministic-archives \
 	--disable-werror \
 	--disable-gprofng \
 	MAKEINFO=true
@@ -64,7 +67,7 @@ BINUTILS_CONFIG = \
 	touch $@
 
 %/.binutils.compiled: %/.binutils.configured
-	cd $*/binutils/build && $(MAKE) MAKEINFO=true LDFLAGS="$(LDFLAGS)" AR_FLAGS=Drc
+	cd $*/binutils/build && $(MAKE) MAKEINFO=true LDFLAGS="$(LDFLAGS)"
 	touch $@
 
 %/.binutils.installed: %/.binutils.compiled
@@ -73,6 +76,7 @@ BINUTILS_CONFIG = \
 		$(MAKE) DESTDIR="$$TMPDIR" install && \
 		find "$$TMPDIR" -exec touch -h -d "@$(SOURCE_DATE_EPOCH)" {} \; && \
 		$(PROJECT_ROOT)/script/replace-binutils-hardlinks.sh "$$TMPDIR" "$(TARGET_TRIPLE)" && \
+		find "$$TMPDIR" -name "*.la" -type f -delete && \
 		mkdir -p $(PREFIX) && \
 		cp -a "$$TMPDIR"/* $(PREFIX)/ && \
 		rm -rf "$$TMPDIR"

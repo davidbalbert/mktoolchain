@@ -1,6 +1,6 @@
 $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-$(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BOOTSTRAP_BUILD_DIR)=.
-$(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BOOTSTRAP_BUILD_DIR)=.
+$(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BOOTSTRAP_BUILD_DIR)=. -frandom-seed=0
+$(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BOOTSTRAP_BUILD_DIR)=. -frandom-seed=0
 $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
 LIBSTDCXX_CONFIG = \
