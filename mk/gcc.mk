@@ -1,145 +1,94 @@
-%/.gcc.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
+%/.gcc.%: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.gcc.%: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.gcc.%: LDFLAGS := --sysroot=$(SYSROOT) -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK) -Wl,--build-id=none
+%/.gcc.%: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
+%/.gcc.%: SYSROOT_SYMLINK = ../sysroot
 
-%/.gcc.installed: SYSROOT_SYMLINK = ../sysroot
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT_SYMLINK := ../../../../$(BUILD)/$(NATIVE_TOOLCHAIN_NAME)/sysroot
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: PREFIX := $(BOOTSTRAP_PREFIX)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: SYSROOT := $(NATIVE_SYSROOT)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../../../../$(BUILD)/$(NATIVE_TOOLCHAIN_NAME)/sysroot
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
 
-# LDFLAGS for bootstrap - disable build-id to ensure reproducibility
-# (build-id is computed from inputs which may contain paths)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: LDFLAGS := -Wl,--build-id=none
-$(BOOTSTRAP_BUILD_DIR)/.gcc.compiled: LDFLAGS := -Wl,--build-id=none
+$(NATIVE_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.gcc.%: PREFIX := $(NATIVE_PREFIX)
+$(NATIVE_BUILD_DIR)/.gcc.%: SYSROOT := $(NATIVE_SYSROOT)
+$(NATIVE_BUILD_DIR)/.gcc.%: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(NATIVE_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../sysroot
+$(NATIVE_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(NATIVE_BUILD_TIME_TOOLS) \
+	--with-build-time-tools=$(NATIVE_PREFIX)/$(TARGET_TRIPLE)/bin
 
-# LDFLAGS only for native builds (BUILD=HOST=TARGET) to link against our sysroot
-# Cross-compilers don't need this as build tools must run on build machine
-%/.gcc.installed: LDFLAGS :=
-%/.gcc.compiled: LDFLAGS :=
-$(NATIVE_BUILD_DIR)/.gcc.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
-$(NATIVE_BUILD_DIR)/.gcc.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(CROSS_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(CROSS_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(HOST_TRIPLE)
+$(CROSS_BUILD_DIR)/.gcc.%: PREFIX := $(CROSS_PREFIX)
+$(CROSS_BUILD_DIR)/.gcc.%: SYSROOT := $(CROSS_SYSROOT)
+$(CROSS_BUILD_DIR)/.gcc.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(CROSS_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../sysroot
+$(CROSS_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
+	--with-build-time-tools=$(CROSS_PREFIX)/$(HOST_TRIPLE)/bin
 
-# FINAL gcc: runs on BUILD, targets TARGET (cross-compiler)
-# FINAL gcc target-specific variables
-# FINAL gcc runs on HOST, targets TARGET. It's built by CROSS gcc.
-# When HOST==TARGET but BUILD!=HOST (Canadian Cross for native compiler):
+# FINAL gcc (runs on HOST, targets TARGET)
+# When HOST==TARGET (Canadian Cross for native compiler):
 #   - Use CROSS gcc to compile (produces HOST binaries)
-#   - Use CROSS binutils during build (run on BUILD, target HOST=TARGET)
-#   - HOST_TRIPLE stays as the global HOST_TRIPLE since FINAL runs on HOST
+#   - Use CROSS binutils during build
 # When HOST!=TARGET (cross-compiler):
-#   - Use CROSS binutils for the final target
+#   - Use NATIVE gcc to build (produces BUILD binaries that run on BUILD)
+#   - HOST_TRIPLE must be BUILD_TRIPLE since the compiler runs on BUILD
+$(FINAL_BUILD_DIR)/.gcc.%: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.gcc.%: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../sysroot
+
 ifeq ($(HOST),$(TARGET))
-$(FINAL_BUILD_DIR)/.gcc.configured: PREFIX := $(FINAL_PREFIX)
-$(FINAL_BUILD_DIR)/.gcc.configured: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.gcc.configured: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.gcc.configured: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
-	--with-build-time-tools=$(CROSS_PREFIX)/$(TARGET_TRIPLE)/bin
-
-$(FINAL_BUILD_DIR)/.gcc.compiled: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-
-$(FINAL_BUILD_DIR)/.gcc.installed: PREFIX := $(FINAL_PREFIX)
-$(FINAL_BUILD_DIR)/.gcc.installed: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
+$(FINAL_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(HOST_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(TARGET_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
 	--with-build-time-tools=$(CROSS_PREFIX)/$(TARGET_TRIPLE)/bin
 else
-$(FINAL_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(FINAL_BUILD_DIR)/.gcc.installed: PREFIX := $(FINAL_PREFIX)
-$(FINAL_BUILD_DIR)/.gcc.installed: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.gcc.installed: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-# When cross-compiling (HOST_ARCH != TARGET_ARCH), need to specify where target binutils are
-$(FINAL_BUILD_DIR)/.gcc.installed: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(FINAL_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
+$(FINAL_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(TARGET_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc.%: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
+	--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin
 endif
 
 # Bootstrap-style gcc for FINAL (used to install glibc headers before building full gcc)
 # Only needed when cross-compiling (HOST_ARCH != TARGET_ARCH)
-$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: PREFIX := $(FINAL_PREFIX)
-$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
-
-# CROSS gcc target-specific variables (runs on BUILD, produces code for HOST)
-$(CROSS_BUILD_DIR)/.gcc.configured: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(CROSS_BUILD_DIR)/.gcc.configured: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
-$(CROSS_BUILD_DIR)/.gcc.configured: PREFIX := $(CROSS_PREFIX)
-$(CROSS_BUILD_DIR)/.gcc.configured: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.gcc.configured: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(CROSS_BUILD_DIR)/.gcc.configured: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
-	--with-build-time-tools=$(CROSS_PREFIX)/$(call os_arch_to_triple,$(HOST))/bin
-
-$(CROSS_BUILD_DIR)/.gcc.compiled: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-
-$(CROSS_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(CROSS_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
-$(CROSS_BUILD_DIR)/.gcc.installed: PREFIX := $(CROSS_PREFIX)
-$(CROSS_BUILD_DIR)/.gcc.installed: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-# Canadian Cross needs target binutils from CROSS_PREFIX (already built by binutils.mk)
-$(CROSS_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
-	--with-build-time-tools=$(CROSS_PREFIX)/$(call os_arch_to_triple,$(HOST))/bin
-
-$(NATIVE_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(NATIVE_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(NATIVE_BUILD_DIR)/.gcc.installed: PREFIX := $(NATIVE_PREFIX)
-$(NATIVE_BUILD_DIR)/.gcc.installed: SYSROOT := $(NATIVE_SYSROOT)
-$(NATIVE_BUILD_DIR)/.gcc.installed: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-# If we're using the BOOTSTRAP compiler, make sure we still use NATIVE binutils.
-$(NATIVE_BUILD_DIR)/.gcc.installed: NATIVE_BUILD_TIME_TOOLS := $(if $(wildcard $(NATIVE_PREFIX)/bin/$(TARGET_TRIPLE)-gcc),,--with-build-time-tools=$(NATIVE_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(NATIVE_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(NATIVE_BUILD_TIME_TOOLS)
-
-$(NATIVE_BUILD_DIR)/.gcc.compiled: SYSROOT := $(NATIVE_SYSROOT)
-$(NATIVE_BUILD_DIR)/.gcc.compiled: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PREFIX := $(BOOTSTRAP_PREFIX)
-# there's no bootstrap sysroot
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT := $(NATIVE_SYSROOT)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: SYSROOT_SYMLINK := ../sysroot
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
 
 # gcc-stage1: Bootstrap-style gcc for building glibc before full gcc
-# CROSS gcc-stage1: runs on BUILD, produces code for HOST (used to build CROSS glibc)
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: PREFIX := $(CROSS_PREFIX)
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: LDFLAGS :=
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: SYSROOT_SYMLINK = ../sysroot
+# Common gcc-stage1 flags
+%/.gcc-stage1.%: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.gcc-stage1.%: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+%/.gcc-stage1.%: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
+%/.gcc-stage1.%: SYSROOT_SYMLINK = ../sysroot
+%/.gcc-stage1.%: LDFLAGS :=
 
-$(CROSS_BUILD_DIR)/.gcc-stage1.compiled: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
-$(CROSS_BUILD_DIR)/.gcc-stage1.compiled: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+# CROSS gcc-stage1 (runs on BUILD, targets HOST)
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: TARGET_TRIPLE := $(HOST_TRIPLE)
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: PREFIX := $(CROSS_PREFIX)
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: SYSROOT := $(CROSS_SYSROOT)
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: SYSROOT_SYMLINK := ../sysroot
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
 
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: PREFIX := $(CROSS_PREFIX)
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: LDFLAGS :=
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
-$(CROSS_BUILD_DIR)/.gcc-stage1.installed: SYSROOT_SYMLINK = ../sysroot
-
-# FINAL gcc-stage1: runs on BUILD, produces code for TARGET (used to build FINAL glibc)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: PREFIX := $(FINAL_PREFIX)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: PATH := $(FINAL_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: LDFLAGS :=
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: SYSROOT_SYMLINK = ../sysroot
-
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: PREFIX := $(FINAL_PREFIX)
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: PATH := $(FINAL_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: LDFLAGS :=
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
-$(FINAL_BUILD_DIR)/.gcc-stage1.installed: SYSROOT_SYMLINK = ../sysroot
-
+# FINAL gcc-stage1 (runs on BUILD, targets TARGET)
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: PATH := $(FINAL_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: SYSROOT_SYMLINK := ../sysroot
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
 
 GCC_BASE_CONFIG = \
 	--host=$(HOST_TRIPLE) \
@@ -247,10 +196,6 @@ endif
 	touch $@
 
 # gcc-stage1 rules (bootstrap-style gcc for TARGET, builds gcc + libgcc only)
-%/.gcc-stage1.installed: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc-stage1.installed: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc-stage1.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
-
 .PRECIOUS: %/.gcc-stage1.configured %/.gcc-stage1.compiled %/.gcc-stage1.installed
 
 %/.gcc-stage1.configured: $(SRC_DIR)/gcc-$(GCC_VERSION) %/.binutils.installed

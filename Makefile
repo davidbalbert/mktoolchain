@@ -139,7 +139,7 @@ endif
 # This allows ld-linux-shim to always use host-sysroot to find the HOST glibc
 ifeq ($(HOST_TRIPLE),$(TARGET_TRIPLE))
 $(FINAL_BUILD_DIR)/.host-sysroot.installed: $(FINAL_BUILD_DIR)/.gcc.installed
-	ln -sfn sysroot $(FINAL_PREFIX)/host-sysroot
+	ln -sfn ../sysroot $(FINAL_PREFIX)/host-sysroot
 	touch $@
 else
 $(FINAL_BUILD_DIR)/.host-sysroot.installed: $(NATIVE_BUILD_DIR)/.glibc.installed $(FINAL_BUILD_DIR)/.gcc.installed
@@ -197,15 +197,16 @@ $(FINAL_BUILD_DIR)/.toolchain: $(TOOLCHAIN_DEPS)
 	$(PROJECT_ROOT)/script/make-reloc.sh $(FINAL_PREFIX)
 	touch $@
 
-# NATIVE host-sysroot symlink (native compiler, so host-sysroot → sysroot)
+# NATIVE tarballs (only when NATIVE != FINAL to avoid duplicate rules)
+ifneq ($(NATIVE_BUILD_DIR),$(FINAL_BUILD_DIR))
 $(NATIVE_BUILD_DIR)/.host-sysroot.installed: $(NATIVE_BUILD_DIR)/.gcc.installed
-	ln -sfn sysroot $(NATIVE_PREFIX)/host-sysroot
+	ln -sfn ../sysroot $(NATIVE_PREFIX)/host-sysroot
 	touch $@
 
-# NATIVE tarballs
 $(NATIVE_BUILD_DIR)/.toolchain: $(NATIVE_BUILD_DIR)/.gcc.installed $(NATIVE_BUILD_DIR)/.glibc.installed $(NATIVE_BUILD_DIR)/.binutils.installed $(NATIVE_BUILD_DIR)/.ld-linux-shim.installed $(NATIVE_BUILD_DIR)/.host-sysroot.installed
 	$(PROJECT_ROOT)/script/make-reloc.sh $(NATIVE_PREFIX)
 	touch $@
+endif
 
 $(NATIVE_TOOLCHAIN_TARBALL): $(NATIVE_BUILD_DIR)/.toolchain | $(DIST_DIR)
 	tar -czf $@ -C $(dir $(NATIVE_PREFIX)) $(notdir $(NATIVE_PREFIX))
