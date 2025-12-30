@@ -1,5 +1,14 @@
-GLIBC_BASE_FLAGS := -O2 -g0 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.glibc.%: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/glibc-$(GLIBC_VERSION)/.timestamp 2>/dev/null || echo 1)
+define glibc_base_vars
+$1: CFLAGS := -O2 -g0 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+$1: CXXFLAGS := -O2 -g0 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+$1: LDFLAGS := -Wl,--build-id=none
+$1: SOURCE_DATE_EPOCH = $$(shell cat $(SRC_DIR)/glibc-$(GLIBC_VERSION)/.timestamp 2>/dev/null || echo 1)
+endef
+
+$(eval $(call glibc_base_vars,$(BOOTSTRAP_BUILD_DIR)/.glibc.%))
+$(eval $(call glibc_base_vars,$(NATIVE_BUILD_DIR)/.glibc.%))
+$(eval $(call glibc_base_vars,$(CROSS_BUILD_DIR)/.glibc.%))
+$(eval $(call glibc_base_vars,$(FINAL_BUILD_DIR)/.glibc.%))
 
 $(BOOTSTRAP_BUILD_DIR)/.glibc.%: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.glibc.%: SYSROOT := $(NATIVE_SYSROOT)
@@ -76,8 +85,9 @@ $(BOOTSTRAP_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.gcc.installed
 	mkdir -p $*/glibc/build $(SYSROOT)
 	ln -sfn $(SRC_DIR)/glibc-$(GLIBC_VERSION) $*/glibc/src
 	cd $*/glibc/build && \
-		CFLAGS="$(GLIBC_BASE_FLAGS) -ffile-prefix-map=$*/glibc=." \
-		CXXFLAGS="$(GLIBC_BASE_FLAGS) -ffile-prefix-map=$*/glibc=." \
+		CFLAGS="$(CFLAGS)" \
+		CXXFLAGS="$(CXXFLAGS)" \
+		LDFLAGS="$(LDFLAGS)" \
 		SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
 		../src/configure $(GLIBC_CONFIG)
 	touch $@

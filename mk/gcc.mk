@@ -1,8 +1,31 @@
-%/.gcc.%: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc.%: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc.%: LDFLAGS := --sysroot=$(SYSROOT) -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK) -Wl,--build-id=none
-%/.gcc.%: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
-%/.gcc.%: SYSROOT_SYMLINK = ../sysroot
+define gcc_base_vars
+$1: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+$1: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+$1: SOURCE_DATE_EPOCH = $$(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
+$1: SYSROOT_SYMLINK := ../sysroot
+endef
+
+# Full LDFLAGS for final toolchain gcc (not bootstrap/stage1)
+define gcc_ldflags_vars
+$1: LDFLAGS = --sysroot=$$(SYSROOT) -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK) -Wl,--build-id=none
+endef
+
+$(eval $(call gcc_base_vars,$(BOOTSTRAP_BUILD_DIR)/.gcc.%))
+$(eval $(call gcc_base_vars,$(NATIVE_BUILD_DIR)/.gcc.%))
+$(eval $(call gcc_base_vars,$(CROSS_BUILD_DIR)/.gcc.%))
+$(eval $(call gcc_base_vars,$(FINAL_BUILD_DIR)/.gcc.%))
+$(eval $(call gcc_base_vars,$(FINAL_BUILD_DIR)/.bootstrap-gcc.%))
+$(eval $(call gcc_base_vars,$(CROSS_BUILD_DIR)/.gcc-stage1.%))
+$(eval $(call gcc_base_vars,$(FINAL_BUILD_DIR)/.gcc-stage1.%))
+
+$(eval $(call gcc_ldflags_vars,$(NATIVE_BUILD_DIR)/.gcc.%))
+$(eval $(call gcc_ldflags_vars,$(CROSS_BUILD_DIR)/.gcc.%))
+$(eval $(call gcc_ldflags_vars,$(FINAL_BUILD_DIR)/.gcc.%))
+
+$(BOOTSTRAP_BUILD_DIR)/.gcc.%: LDFLAGS :=
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: LDFLAGS :=
+$(CROSS_BUILD_DIR)/.gcc-stage1.%: LDFLAGS :=
+$(FINAL_BUILD_DIR)/.gcc-stage1.%: LDFLAGS :=
 
 $(BOOTSTRAP_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(BUILD_TRIPLE)
@@ -17,7 +40,6 @@ $(NATIVE_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(NATIVE_BUILD_DIR)/.gcc.%: PREFIX := $(NATIVE_PREFIX)
 $(NATIVE_BUILD_DIR)/.gcc.%: SYSROOT := $(NATIVE_SYSROOT)
 $(NATIVE_BUILD_DIR)/.gcc.%: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-$(NATIVE_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../sysroot
 $(NATIVE_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(NATIVE_BUILD_TIME_TOOLS) \
 	--with-build-time-tools=$(NATIVE_PREFIX)/$(TARGET_TRIPLE)/bin
 
@@ -26,7 +48,6 @@ $(CROSS_BUILD_DIR)/.gcc.%: TARGET_TRIPLE := $(HOST_TRIPLE)
 $(CROSS_BUILD_DIR)/.gcc.%: PREFIX := $(CROSS_PREFIX)
 $(CROSS_BUILD_DIR)/.gcc.%: SYSROOT := $(CROSS_SYSROOT)
 $(CROSS_BUILD_DIR)/.gcc.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(CROSS_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../sysroot
 $(CROSS_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
 	--with-build-time-tools=$(CROSS_PREFIX)/$(HOST_TRIPLE)/bin
 
@@ -39,7 +60,6 @@ $(CROSS_BUILD_DIR)/.gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
 #   - HOST_TRIPLE must be BUILD_TRIPLE since the compiler runs on BUILD
 $(FINAL_BUILD_DIR)/.gcc.%: PREFIX := $(FINAL_PREFIX)
 $(FINAL_BUILD_DIR)/.gcc.%: SYSROOT := $(FINAL_SYSROOT)
-$(FINAL_BUILD_DIR)/.gcc.%: SYSROOT_SYMLINK := ../sysroot
 
 ifeq ($(HOST),$(TARGET))
 $(FINAL_BUILD_DIR)/.gcc.%: HOST_TRIPLE := $(HOST_TRIPLE)
@@ -60,17 +80,8 @@ endif
 $(FINAL_BUILD_DIR)/.bootstrap-gcc.%: PREFIX := $(FINAL_PREFIX)
 $(FINAL_BUILD_DIR)/.bootstrap-gcc.%: SYSROOT := $(FINAL_SYSROOT)
 $(FINAL_BUILD_DIR)/.bootstrap-gcc.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.bootstrap-gcc.%: SYSROOT_SYMLINK := ../sysroot
 $(FINAL_BUILD_DIR)/.bootstrap-gcc.%: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
 $(FINAL_BUILD_DIR)/.bootstrap-gcc.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
-
-# gcc-stage1: Bootstrap-style gcc for building glibc before full gcc
-# Common gcc-stage1 flags
-%/.gcc-stage1.%: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc-stage1.%: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.gcc-stage1.%: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
-%/.gcc-stage1.%: SYSROOT_SYMLINK = ../sysroot
-%/.gcc-stage1.%: LDFLAGS :=
 
 # CROSS gcc-stage1 (runs on BUILD, targets HOST)
 $(CROSS_BUILD_DIR)/.gcc-stage1.%: HOST_TRIPLE := $(BUILD_TRIPLE)
@@ -78,7 +89,6 @@ $(CROSS_BUILD_DIR)/.gcc-stage1.%: TARGET_TRIPLE := $(HOST_TRIPLE)
 $(CROSS_BUILD_DIR)/.gcc-stage1.%: PREFIX := $(CROSS_PREFIX)
 $(CROSS_BUILD_DIR)/.gcc-stage1.%: SYSROOT := $(CROSS_SYSROOT)
 $(CROSS_BUILD_DIR)/.gcc-stage1.%: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(CROSS_BUILD_DIR)/.gcc-stage1.%: SYSROOT_SYMLINK := ../sysroot
 $(CROSS_BUILD_DIR)/.gcc-stage1.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
 
 # FINAL gcc-stage1 (runs on BUILD, targets TARGET)
@@ -86,7 +96,6 @@ $(FINAL_BUILD_DIR)/.gcc-stage1.%: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(FINAL_BUILD_DIR)/.gcc-stage1.%: PREFIX := $(FINAL_PREFIX)
 $(FINAL_BUILD_DIR)/.gcc-stage1.%: SYSROOT := $(FINAL_SYSROOT)
 $(FINAL_BUILD_DIR)/.gcc-stage1.%: PATH := $(FINAL_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
-$(FINAL_BUILD_DIR)/.gcc-stage1.%: SYSROOT_SYMLINK := ../sysroot
 $(FINAL_BUILD_DIR)/.gcc-stage1.%: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
 $(FINAL_BUILD_DIR)/.gcc-stage1.%: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
 

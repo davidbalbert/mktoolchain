@@ -1,7 +1,24 @@
-%/.binutils.%: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.binutils.%: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
-%/.binutils.%: LDFLAGS := --sysroot=$(SYSROOT) -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK) -Wl,--build-id=none
-%/.binutils.%: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/binutils-$(BINUTILS_VERSION)/.timestamp 2>/dev/null || echo 1)
+define binutils_base_vars
+$1: CFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+$1: CXXFLAGS := -g0 -O2 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
+$1: SOURCE_DATE_EPOCH = $$(shell cat $(SRC_DIR)/binutils-$(BINUTILS_VERSION)/.timestamp 2>/dev/null || echo 1)
+endef
+
+# Not used for bootstrap
+define binutils_ldflags_vars
+$1: LDFLAGS = --sysroot=$$(SYSROOT) -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK) -Wl,--build-id=none
+endef
+
+$(eval $(call binutils_base_vars,$(BOOTSTRAP_BUILD_DIR)/.binutils.%))
+$(eval $(call binutils_base_vars,$(NATIVE_BUILD_DIR)/.binutils.%))
+$(eval $(call binutils_base_vars,$(CROSS_BUILD_DIR)/.binutils.%))
+$(eval $(call binutils_base_vars,$(FINAL_BUILD_DIR)/.binutils.%))
+
+$(eval $(call binutils_ldflags_vars,$(NATIVE_BUILD_DIR)/.binutils.%))
+$(eval $(call binutils_ldflags_vars,$(CROSS_BUILD_DIR)/.binutils.%))
+$(eval $(call binutils_ldflags_vars,$(FINAL_BUILD_DIR)/.binutils.%))
+
+$(BOOTSTRAP_BUILD_DIR)/.binutils.%: LDFLAGS :=
 
 $(BOOTSTRAP_BUILD_DIR)/.binutils.%: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.%: TARGET_TRIPLE := $(BUILD_TRIPLE)
