@@ -30,6 +30,7 @@ BUILD_ROOT ?= .
 BUILD_ROOT := $(abspath $(BUILD_ROOT))
 BUILD_DIR := $(BUILD_ROOT)/build
 OUT_DIR := $(BUILD_ROOT)/out
+DIST_DIR := $(BUILD_ROOT)/dist
 DL_DIR := $(BUILD_ROOT)/dl
 SRC_DIR := $(BUILD_ROOT)/src
 
@@ -115,13 +116,21 @@ $(CROSS_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc-stage1.installed
 $(CROSS_BUILD_DIR)/.gcc.configured: $(CROSS_BUILD_DIR)/.glibc.installed
 endif
 
-# FINAL stage: built by CROSS (only when FINAL != CROSS, i.e., HOST != TARGET)
-ifneq ($(HOST),$(TARGET))
+# FINAL stage: built by CROSS (only when FINAL_BUILD_DIR != CROSS_BUILD_DIR)
+ifneq ($(FINAL_BUILD_DIR),$(CROSS_BUILD_DIR))
 $(FINAL_BUILD_DIR)/.binutils.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+$(FINAL_BUILD_DIR)/.gcc.configured: $(FINAL_BUILD_DIR)/.glibc.installed
+
+# When HOST==TARGET (native compiler for HOST), use CROSS gcc to build FINAL glibc
+# since CROSS gcc targets HOST which equals TARGET. No need for gcc-stage1.
+# When HOST!=TARGET (cross-compiler), need gcc-stage1 that targets TARGET.
+ifeq ($(HOST),$(TARGET))
+$(FINAL_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+else
 $(FINAL_BUILD_DIR)/.gcc-stage1.configured: $(CROSS_BUILD_DIR)/.gcc.installed
 $(FINAL_BUILD_DIR)/.gcc-stage1.compiled: $(FINAL_BUILD_DIR)/.glibc-headers.installed
 $(FINAL_BUILD_DIR)/.glibc.configured: $(FINAL_BUILD_DIR)/.gcc-stage1.installed
-$(FINAL_BUILD_DIR)/.gcc.configured: $(FINAL_BUILD_DIR)/.glibc.installed
+endif
 endif
 
 # Host-sysroot symlink for ALL toolchains
@@ -138,17 +147,105 @@ $(FINAL_BUILD_DIR)/.host-sysroot.installed: $(NATIVE_BUILD_DIR)/.glibc.installed
 	touch $@
 endif
 
-TOOLCHAIN_DEPS := $(FINAL_BUILD_DIR)/.gcc.installed $(FINAL_BUILD_DIR)/.glibc.installed $(FINAL_BUILD_DIR)/.ld-linux-shim.installed $(FINAL_BUILD_DIR)/.host-sysroot.installed
+TOOLCHAIN_DEPS := $(FINAL_BUILD_DIR)/.gcc.installed $(FINAL_BUILD_DIR)/.glibc.installed $(FINAL_BUILD_DIR)/.binutils.installed $(FINAL_BUILD_DIR)/.ld-linux-shim.installed $(FINAL_BUILD_DIR)/.host-sysroot.installed
 
-.DEFAULT_GOAL := toolchain
+# Archive naming: <host-os-arch>-<target-triple>-<toolchain-name>.tar.gz
+# e.g., aarch64-linux-x86_64-linux-gnu-gcc-15.1.0.tar.gz (runs on aarch64-linux, targets x86_64-linux-gnu)
+# Sysroot: <target-triple>-<toolchain-name>-sysroot.tar.gz
 
-.PHONY: toolchain download clean test-parallel
+# Helper: convert os/arch to arch-os (e.g., linux/aarch64 -> aarch64-linux)
+os_arch_to_os_arch = $(word 2,$(subst /, ,$(1)))-$(word 1,$(subst /, ,$(1)))
+BUILD_OS_ARCH := $(call os_arch_to_os_arch,$(BUILD))
+HOST_OS_ARCH := $(call os_arch_to_os_arch,$(HOST))
+
+# NATIVE: runs on BUILD, targets BUILD
+NATIVE_TOOLCHAIN_TARBALL := $(DIST_DIR)/$(BUILD_OS_ARCH)-$(BUILD_TRIPLE)-$(TOOLCHAIN_NAME).tar.gz
+NATIVE_SYSROOT_TARBALL := $(DIST_DIR)/$(BUILD_TRIPLE)-$(TOOLCHAIN_NAME)-sysroot.tar.gz
+
+# CROSS: runs on BUILD, targets HOST (only when HOST != BUILD)
+CROSS_TOOLCHAIN_TARBALL := $(DIST_DIR)/$(BUILD_OS_ARCH)-$(HOST_TRIPLE)-$(TOOLCHAIN_NAME).tar.gz
+CROSS_SYSROOT_TARBALL := $(DIST_DIR)/$(HOST_TRIPLE)-$(TOOLCHAIN_NAME)-sysroot.tar.gz
+
+# FINAL: runs on HOST, targets TARGET
+FINAL_TOOLCHAIN_TARBALL := $(DIST_DIR)/$(HOST_OS_ARCH)-$(TARGET_TRIPLE)-$(TOOLCHAIN_NAME).tar.gz
+FINAL_SYSROOT_TARBALL := $(DIST_DIR)/$(TARGET_TRIPLE)-$(TOOLCHAIN_NAME)-sysroot.tar.gz
+
+# Collect all tarballs to build (avoid duplicates when stages collapse)
+ALL_TARBALLS := $(NATIVE_TOOLCHAIN_TARBALL) $(NATIVE_SYSROOT_TARBALL)
+ifneq ($(HOST),$(BUILD))
+ALL_TARBALLS += $(CROSS_TOOLCHAIN_TARBALL)
+ifneq ($(HOST_TRIPLE),$(BUILD_TRIPLE))
+ALL_TARBALLS += $(CROSS_SYSROOT_TARBALL)
+endif
+endif
+ifneq ($(FINAL_BUILD_DIR),$(CROSS_BUILD_DIR))
+ALL_TARBALLS += $(FINAL_TOOLCHAIN_TARBALL)
+ifneq ($(TARGET_TRIPLE),$(HOST_TRIPLE))
+ALL_TARBALLS += $(FINAL_SYSROOT_TARBALL)
+endif
+endif
+
+.DEFAULT_GOAL := all
+
+.PHONY: all toolchain download clean test-parallel
+
+all: $(ALL_TARBALLS)
 
 toolchain: $(FINAL_BUILD_DIR)/.toolchain
 
 $(FINAL_BUILD_DIR)/.toolchain: $(TOOLCHAIN_DEPS)
 	$(PROJECT_ROOT)/script/make-reloc.sh $(FINAL_PREFIX)
 	touch $@
+
+# NATIVE host-sysroot symlink (native compiler, so host-sysroot → sysroot)
+$(NATIVE_BUILD_DIR)/.host-sysroot.installed: $(NATIVE_BUILD_DIR)/.gcc.installed
+	ln -sfn sysroot $(NATIVE_PREFIX)/host-sysroot
+	touch $@
+
+# NATIVE tarballs
+$(NATIVE_BUILD_DIR)/.toolchain: $(NATIVE_BUILD_DIR)/.gcc.installed $(NATIVE_BUILD_DIR)/.glibc.installed $(NATIVE_BUILD_DIR)/.binutils.installed $(NATIVE_BUILD_DIR)/.ld-linux-shim.installed $(NATIVE_BUILD_DIR)/.host-sysroot.installed
+	$(PROJECT_ROOT)/script/make-reloc.sh $(NATIVE_PREFIX)
+	touch $@
+
+$(NATIVE_TOOLCHAIN_TARBALL): $(NATIVE_BUILD_DIR)/.toolchain | $(DIST_DIR)
+	tar -czf $@ -C $(dir $(NATIVE_PREFIX)) $(notdir $(NATIVE_PREFIX))
+
+$(NATIVE_SYSROOT_TARBALL): $(NATIVE_BUILD_DIR)/.toolchain | $(DIST_DIR)
+	tar -czf $@ -C $(dir $(NATIVE_SYSROOT)) $(notdir $(NATIVE_SYSROOT))
+
+# CROSS tarballs (only when HOST != BUILD)
+ifneq ($(HOST),$(BUILD))
+# CROSS is a cross-compiler (runs on BUILD, targets HOST)
+# host-sysroot → NATIVE sysroot (where the BUILD glibc lives)
+$(CROSS_BUILD_DIR)/.host-sysroot.installed: $(NATIVE_BUILD_DIR)/.glibc.installed $(CROSS_BUILD_DIR)/.gcc.installed
+	ln -sfn ../../$(NATIVE_TOOLCHAIN_NAME)/sysroot $(CROSS_PREFIX)/host-sysroot
+	touch $@
+
+$(CROSS_BUILD_DIR)/.toolchain: $(CROSS_BUILD_DIR)/.gcc.installed $(CROSS_BUILD_DIR)/.glibc.installed $(CROSS_BUILD_DIR)/.binutils.installed $(CROSS_BUILD_DIR)/.ld-linux-shim.installed $(CROSS_BUILD_DIR)/.host-sysroot.installed
+	$(PROJECT_ROOT)/script/make-reloc.sh $(CROSS_PREFIX)
+	touch $@
+
+$(CROSS_TOOLCHAIN_TARBALL): $(CROSS_BUILD_DIR)/.toolchain | $(DIST_DIR)
+	tar -czf $@ -C $(dir $(CROSS_PREFIX)) $(notdir $(CROSS_PREFIX))
+
+$(CROSS_SYSROOT_TARBALL): $(CROSS_BUILD_DIR)/.toolchain | $(DIST_DIR)
+	tar -czf $@ -C $(dir $(CROSS_SYSROOT)) $(notdir $(CROSS_SYSROOT))
+endif
+
+# FINAL tarballs (only when FINAL != CROSS)
+ifneq ($(FINAL_BUILD_DIR),$(CROSS_BUILD_DIR))
+$(FINAL_TOOLCHAIN_TARBALL): $(FINAL_BUILD_DIR)/.toolchain | $(DIST_DIR)
+	tar -czf $@ -C $(dir $(FINAL_PREFIX)) $(notdir $(FINAL_PREFIX))
+
+# Only define FINAL sysroot rule if it differs from CROSS sysroot (avoid duplicate rules)
+ifneq ($(TARGET_TRIPLE),$(HOST_TRIPLE))
+$(FINAL_SYSROOT_TARBALL): $(FINAL_BUILD_DIR)/.toolchain | $(DIST_DIR)
+	tar -czf $@ -C $(dir $(FINAL_SYSROOT)) $(notdir $(FINAL_SYSROOT))
+endif
+endif
+
+$(DIST_DIR):
+	mkdir -p $@
 
 clean:
 	rm -rf $(BUILD_DIR) $(OUT_DIR)

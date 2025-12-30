@@ -19,8 +19,17 @@ $(FINAL_BUILD_DIR)/.binutils.installed: PREFIX := $(FINAL_PREFIX)
 $(FINAL_BUILD_DIR)/.binutils.installed: SYSROOT := $(FINAL_SYSROOT)
 $(FINAL_BUILD_DIR)/.binutils.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
 
+# CROSS binutils target-specific variables (runs on BUILD, targets HOST)
+$(CROSS_BUILD_DIR)/.binutils.configured: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(CROSS_BUILD_DIR)/.binutils.configured: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
+$(CROSS_BUILD_DIR)/.binutils.configured: PREFIX := $(CROSS_PREFIX)
+$(CROSS_BUILD_DIR)/.binutils.configured: SYSROOT := $(CROSS_SYSROOT)
+$(CROSS_BUILD_DIR)/.binutils.configured: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+
+$(CROSS_BUILD_DIR)/.binutils.compiled: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+
 $(CROSS_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(CROSS_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
+$(CROSS_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(call os_arch_to_triple,$(HOST))
 $(CROSS_BUILD_DIR)/.binutils.installed: PREFIX := $(CROSS_PREFIX)
 $(CROSS_BUILD_DIR)/.binutils.installed: SYSROOT := $(CROSS_SYSROOT)
 $(CROSS_BUILD_DIR)/.binutils.installed: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
