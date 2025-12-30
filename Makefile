@@ -38,33 +38,42 @@ BUILD_ARCH := $(word 2,$(subst /, ,$(BUILD)))
 HOST_ARCH := $(word 2,$(subst /, ,$(HOST)))
 TARGET_ARCH := $(word 2,$(subst /, ,$(TARGET)))
 
-# Computed toolchain names following $(TARGET_TRIPLE)-$(TOOLCHAIN_NAME) pattern
-BUILD_TOOLCHAIN_NAME := $(BUILD_TRIPLE)-$(TOOLCHAIN_NAME)
-CROSS_TOOLCHAIN_NAME := $(HOST_TRIPLE)-$(TOOLCHAIN_NAME)
-TARGET_TOOLCHAIN_NAME := $(TARGET_TRIPLE)-$(TOOLCHAIN_NAME)
+NATIVE_TOOLCHAIN_NAME := $(BUILD_TRIPLE)-$(TOOLCHAIN_NAME)
 
-# Computed build directories
-BOOTSTRAP_BUILD_DIR := $(BUILD_DIR)/bootstrap/$(BUILD_ARCH)/$(BUILD_TOOLCHAIN_NAME)
-BUILD_BUILD_DIR := $(BUILD_DIR)/linux/$(BUILD_ARCH)/$(BUILD_TOOLCHAIN_NAME)
-CROSS_BUILD_DIR := $(BUILD_DIR)/linux/$(BUILD_ARCH)/$(CROSS_TOOLCHAIN_NAME)
-TARGET_BUILD_DIR := $(BUILD_DIR)/linux/$(HOST_ARCH)/$(TARGET_TOOLCHAIN_NAME)
+# NATIVE: runs on BUILD, targets BUILD (built by BOOTSTRAP)
+# CROSS: runs on BUILD, targets HOST (built by NATIVE) - collapses to NATIVE when HOST=BUILD
+# FINAL: runs on HOST, targets TARGET (built by CROSS) - collapses to NATIVE when BUILD=HOST=TARGET
 
-# Computed output directories
-BOOTSTRAP_OUT_DIR := $(OUT_DIR)/bootstrap/$(BUILD_ARCH)/$(BUILD_TOOLCHAIN_NAME)
-BUILD_OUT_DIR := $(OUT_DIR)/linux/$(BUILD_ARCH)/$(BUILD_TOOLCHAIN_NAME)
-CROSS_OUT_DIR := $(OUT_DIR)/linux/$(BUILD_ARCH)/$(CROSS_TOOLCHAIN_NAME)
-TARGET_OUT_DIR := $(OUT_DIR)/linux/$(HOST_ARCH)/$(TARGET_TOOLCHAIN_NAME)
+BOOTSTRAP_BUILD_DIR := $(BUILD_DIR)/bootstrap/$(BUILD_ARCH)/$(NATIVE_TOOLCHAIN_NAME)
+BOOTSTRAP_OUT_DIR := $(OUT_DIR)/bootstrap/$(BUILD_ARCH)/$(NATIVE_TOOLCHAIN_NAME)
 
-# Computed prefixes
+NATIVE_BUILD_DIR := $(BUILD_DIR)/linux/$(BUILD_ARCH)/$(NATIVE_TOOLCHAIN_NAME)
+NATIVE_OUT_DIR := $(OUT_DIR)/linux/$(BUILD_ARCH)/$(NATIVE_TOOLCHAIN_NAME)
+
+ifeq ($(HOST),$(BUILD))
+  CROSS_BUILD_DIR := $(NATIVE_BUILD_DIR)
+  CROSS_OUT_DIR := $(NATIVE_OUT_DIR)
+else
+  CROSS_BUILD_DIR := $(BUILD_DIR)/linux/$(BUILD_ARCH)/$(HOST_TRIPLE)-$(TOOLCHAIN_NAME)
+  CROSS_OUT_DIR := $(OUT_DIR)/linux/$(BUILD_ARCH)/$(HOST_TRIPLE)-$(TOOLCHAIN_NAME)
+endif
+
+ifeq ($(HOST)_$(TARGET),$(BUILD)_$(BUILD))
+  FINAL_BUILD_DIR := $(NATIVE_BUILD_DIR)
+  FINAL_OUT_DIR := $(NATIVE_OUT_DIR)
+else
+  FINAL_BUILD_DIR := $(BUILD_DIR)/linux/$(HOST_ARCH)/$(TARGET_TRIPLE)-$(TOOLCHAIN_NAME)
+  FINAL_OUT_DIR := $(OUT_DIR)/linux/$(HOST_ARCH)/$(TARGET_TRIPLE)-$(TOOLCHAIN_NAME)
+endif
+
 BOOTSTRAP_PREFIX := $(BOOTSTRAP_OUT_DIR)/toolchain
-BUILD_PREFIX := $(BUILD_OUT_DIR)/toolchain
+NATIVE_PREFIX := $(NATIVE_OUT_DIR)/toolchain
 CROSS_PREFIX := $(CROSS_OUT_DIR)/toolchain
-TARGET_PREFIX := $(TARGET_OUT_DIR)/toolchain
+FINAL_PREFIX := $(FINAL_OUT_DIR)/toolchain
 
-# Computed sysroots
-BUILD_SYSROOT := $(BUILD_OUT_DIR)/sysroot
+NATIVE_SYSROOT := $(NATIVE_OUT_DIR)/sysroot
 CROSS_SYSROOT := $(CROSS_OUT_DIR)/sysroot
-TARGET_SYSROOT := $(TARGET_OUT_DIR)/sysroot
+FINAL_SYSROOT := $(FINAL_OUT_DIR)/sysroot
 
 # Fixed-length placeholder rpath for reproducibility (patchelf will replace with $ORIGIN-relative path)
 RPATH_PLACEHOLDER := /XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -73,10 +82,10 @@ RPATH_PLACEHOLDER := /XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 # The actual symlink is created before building native toolchain and points to the real ld-linux
 INTERP_SYMLINK := /tmp/ld-shim-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-# Rule to create the interpreter symlink (used only for BUILD=HOST=TARGET native builds)
+# Rule to create the interpreter symlink (used for NATIVE toolchain)
 # This creates a fixed-length path that points to the real dynamic linker
-$(BUILD_BUILD_DIR)/.interp-symlink.installed: $(BUILD_BUILD_DIR)/.glibc.installed
-	@REAL_INTERP=$$(find $(BUILD_SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f | head -n 1); \
+$(NATIVE_BUILD_DIR)/.interp-symlink.installed: $(NATIVE_BUILD_DIR)/.glibc.installed
+	@REAL_INTERP=$$(find $(NATIVE_SYSROOT)/usr/lib -name "ld-linux-*.so.*" -type f | head -n 1); \
 	if [ -n "$$REAL_INTERP" ]; then \
 		ln -sfn "$$REAL_INTERP" "$(INTERP_SYMLINK)"; \
 		echo "Created interpreter symlink: $(INTERP_SYMLINK) -> $$REAL_INTERP"; \
@@ -85,94 +94,60 @@ $(BUILD_BUILD_DIR)/.interp-symlink.installed: $(BUILD_BUILD_DIR)/.glibc.installe
 
 include $(PROJECT_ROOT)/mk/*.mk
 
-# Conditional dependency chains based on build scenario
+# Static dependency chain using semantic stages
+# Aliasing causes edges to collapse when stages are equivalent:
+# - Case 1 (native): FINAL=CROSS=NATIVE → chain: NATIVE→BOOTSTRAP
+# - Case 2 (cross):  CROSS=NATIVE       → chain: FINAL→NATIVE→BOOTSTRAP
+# - Case 3 (Canadian): all distinct     → chain: FINAL→CROSS→NATIVE→BOOTSTRAP
 
-# Phase dependency chains
-# Case 1: Native build (BUILD = HOST = TARGET)
-# No gcc-stage1 needed - bootstrap gcc can compile glibc directly
-ifeq ($(BUILD)_$(HOST)_$(TARGET),$(BUILD)_$(BUILD)_$(BUILD))
-  $(TARGET_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  # binutils.compiled needs glibc installed and the interpreter symlink created
-  $(TARGET_BUILD_DIR)/.binutils.compiled: $(TARGET_BUILD_DIR)/.interp-symlink.installed
-  $(TARGET_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(TARGET_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(TARGET_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  # Bootstrap GCC has no libgcc_s, so force C version of links-dso-program
-  $(TARGET_BUILD_DIR)/.glibc.compiled: $(TARGET_BUILD_DIR)/.glibc.configured
-	cd $(TARGET_BUILD_DIR)/glibc/build && $(MAKE) CXX=
-	touch $@
-  $(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
-# Case 2: Cross-compiler for build system (BUILD = HOST ≠ TARGET)
-# gcc-stage1 provides cross-compiler for building TARGET glibc
-else ifeq ($(HOST),$(BUILD))
-  # BUILD native toolchain - same as Case 1, use bootstrap gcc for glibc
-  $(BUILD_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.interp-symlink.installed
-  $(BUILD_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
-	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
-	touch $@
-  $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed
-  # TARGET cross-compiler
-  $(TARGET_BUILD_DIR)/.binutils.installed: $(BUILD_BUILD_DIR)/.glibc.installed
-  $(TARGET_BUILD_DIR)/.gcc-stage1.configured: $(BUILD_BUILD_DIR)/.glibc.installed
-  # gcc-stage1 builds libgcc which needs glibc headers in TARGET sysroot
-  $(TARGET_BUILD_DIR)/.gcc-stage1.compiled: $(TARGET_BUILD_DIR)/.glibc-headers.installed
-  $(TARGET_BUILD_DIR)/.glibc.configured: $(TARGET_BUILD_DIR)/.gcc-stage1.installed
-  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
-# Case 3: Native or cross-compilation to different host (BUILD ≠ HOST)
-else
-  # BUILD native toolchain - same as Case 1 & 2, use bootstrap gcc for glibc
-  $(BUILD_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(BUILD_BUILD_DIR)/.binutils.compiled: $(BUILD_BUILD_DIR)/.interp-symlink.installed
-  $(BUILD_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
-  $(BUILD_BUILD_DIR)/.glibc.configured: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(BUILD_BUILD_DIR)/.glibc.compiled: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(BUILD_BUILD_DIR)/.glibc.compiled: $(BUILD_BUILD_DIR)/.glibc.configured
-	cd $(BUILD_BUILD_DIR)/glibc/build && $(MAKE) CXX=
-	touch $@
-  $(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-  $(BUILD_BUILD_DIR)/.gcc.configured: $(BUILD_BUILD_DIR)/.glibc.installed
-  # CROSS toolchain (BUILD→HOST)
-  $(CROSS_BUILD_DIR)/.binutils.installed: $(BUILD_BUILD_DIR)/.glibc.installed
-  $(CROSS_BUILD_DIR)/.gcc-stage1.configured: $(BUILD_BUILD_DIR)/.glibc.installed
-  $(CROSS_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc-stage1.installed
-  $(CROSS_BUILD_DIR)/.gcc.configured: $(CROSS_BUILD_DIR)/.glibc.installed
-  # TARGET toolchain (HOST→TARGET, built using CROSS compiler)
-  $(TARGET_BUILD_DIR)/.binutils.installed: $(CROSS_BUILD_DIR)/.glibc.installed
-  $(TARGET_BUILD_DIR)/.gcc-stage1.configured: $(CROSS_BUILD_DIR)/.glibc.installed
-  $(TARGET_BUILD_DIR)/.glibc.configured: $(TARGET_BUILD_DIR)/.gcc-stage1.installed
-  $(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc.installed
+# NATIVE stage: built by BOOTSTRAP (always applies)
+$(NATIVE_BUILD_DIR)/.binutils.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+$(NATIVE_BUILD_DIR)/.binutils.compiled: $(NATIVE_BUILD_DIR)/.interp-symlink.installed
+$(NATIVE_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.libstdc++.installed
+
+$(NATIVE_BUILD_DIR)/.gcc.configured: $(NATIVE_BUILD_DIR)/.glibc.installed
+
+# CROSS stage: built by NATIVE (only when CROSS != NATIVE, i.e., HOST != BUILD)
+ifneq ($(HOST),$(BUILD))
+$(CROSS_BUILD_DIR)/.binutils.configured: $(NATIVE_BUILD_DIR)/.gcc.installed
+$(CROSS_BUILD_DIR)/.gcc-stage1.configured: $(NATIVE_BUILD_DIR)/.gcc.installed
+$(CROSS_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc-stage1.installed
+$(CROSS_BUILD_DIR)/.gcc.configured: $(CROSS_BUILD_DIR)/.glibc.installed
+endif
+
+# FINAL stage: built by CROSS (only when FINAL != CROSS, i.e., HOST != TARGET)
+ifneq ($(HOST),$(TARGET))
+$(FINAL_BUILD_DIR)/.binutils.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+$(FINAL_BUILD_DIR)/.gcc-stage1.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+$(FINAL_BUILD_DIR)/.gcc-stage1.compiled: $(FINAL_BUILD_DIR)/.glibc-headers.installed
+$(FINAL_BUILD_DIR)/.glibc.configured: $(FINAL_BUILD_DIR)/.gcc-stage1.installed
+$(FINAL_BUILD_DIR)/.gcc.configured: $(FINAL_BUILD_DIR)/.glibc.installed
 endif
 
 # Host-sysroot symlink for ALL toolchains
 # For native compilers (HOST == TARGET): host-sysroot → sysroot
-# For cross-compilers (HOST != TARGET): host-sysroot → ../../$(BUILD_TOOLCHAIN_NAME)/sysroot
+# For cross-compilers (HOST != TARGET): host-sysroot → ../../$(NATIVE_TOOLCHAIN_NAME)/sysroot
 # This allows ld-linux-shim to always use host-sysroot to find the HOST glibc
 ifeq ($(HOST_TRIPLE),$(TARGET_TRIPLE))
-$(TARGET_BUILD_DIR)/.host-sysroot.installed: $(TARGET_BUILD_DIR)/.gcc.installed
-	ln -sfn sysroot $(TARGET_PREFIX)/host-sysroot
+$(FINAL_BUILD_DIR)/.host-sysroot.installed: $(FINAL_BUILD_DIR)/.gcc.installed
+	ln -sfn sysroot $(FINAL_PREFIX)/host-sysroot
 	touch $@
 else
-$(TARGET_BUILD_DIR)/.host-sysroot.installed: $(BUILD_BUILD_DIR)/.glibc.installed $(TARGET_BUILD_DIR)/.gcc.installed
-	ln -sfn ../../$(BUILD_TOOLCHAIN_NAME)/sysroot $(TARGET_PREFIX)/host-sysroot
+$(FINAL_BUILD_DIR)/.host-sysroot.installed: $(NATIVE_BUILD_DIR)/.glibc.installed $(FINAL_BUILD_DIR)/.gcc.installed
+	ln -sfn ../../$(NATIVE_TOOLCHAIN_NAME)/sysroot $(FINAL_PREFIX)/host-sysroot
 	touch $@
 endif
 
-TOOLCHAIN_DEPS := $(TARGET_BUILD_DIR)/.gcc.installed $(TARGET_BUILD_DIR)/.glibc.installed $(TARGET_BUILD_DIR)/.ld-linux-shim.installed $(TARGET_BUILD_DIR)/.host-sysroot.installed
+TOOLCHAIN_DEPS := $(FINAL_BUILD_DIR)/.gcc.installed $(FINAL_BUILD_DIR)/.glibc.installed $(FINAL_BUILD_DIR)/.ld-linux-shim.installed $(FINAL_BUILD_DIR)/.host-sysroot.installed
 
 .DEFAULT_GOAL := toolchain
 
 .PHONY: toolchain download clean test-parallel
 
-toolchain: $(TARGET_BUILD_DIR)/.toolchain
+toolchain: $(FINAL_BUILD_DIR)/.toolchain
 
-$(TARGET_BUILD_DIR)/.toolchain: $(TOOLCHAIN_DEPS)
-	$(PROJECT_ROOT)/script/make-reloc.sh $(TARGET_PREFIX)
+$(FINAL_BUILD_DIR)/.toolchain: $(TOOLCHAIN_DEPS)
+	$(PROJECT_ROOT)/script/make-reloc.sh $(FINAL_PREFIX)
 	touch $@
 
 clean:

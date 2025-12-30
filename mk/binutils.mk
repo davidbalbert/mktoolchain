@@ -10,35 +10,35 @@ $(BOOTSTRAP_BUILD_DIR)/.binutils.compiled: LDFLAGS := -Wl,--build-id=none
 # Cross-compilers don't need this as build tools must run on build machine
 %/.binutils.installed: LDFLAGS :=
 %/.binutils.compiled: LDFLAGS :=
-$(BUILD_BUILD_DIR)/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
-$(BUILD_BUILD_DIR)/.binutils.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(NATIVE_BUILD_DIR)/.binutils.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(NATIVE_BUILD_DIR)/.binutils.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
 
-$(TARGET_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(HOST_TRIPLE)
-$(TARGET_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(TARGET_TRIPLE)
-$(TARGET_BUILD_DIR)/.binutils.installed: PREFIX := $(TARGET_PREFIX)
-$(TARGET_BUILD_DIR)/.binutils.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.binutils.installed: PATH := $(CROSS_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(HOST_TRIPLE)
+$(FINAL_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(TARGET_TRIPLE)
+$(FINAL_BUILD_DIR)/.binutils.installed: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.binutils.installed: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.binutils.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
 
 $(CROSS_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(CROSS_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
 $(CROSS_BUILD_DIR)/.binutils.installed: PREFIX := $(CROSS_PREFIX)
 $(CROSS_BUILD_DIR)/.binutils.installed: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(ORIG_PATH)
+$(CROSS_BUILD_DIR)/.binutils.installed: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
 
-$(BUILD_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(BUILD_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(BUILD_BUILD_DIR)/.binutils.installed: PREFIX := $(BUILD_PREFIX)
-$(BUILD_BUILD_DIR)/.binutils.installed: SYSROOT := $(BUILD_SYSROOT)
-$(BUILD_BUILD_DIR)/.binutils.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(NATIVE_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.binutils.installed: PREFIX := $(NATIVE_PREFIX)
+$(NATIVE_BUILD_DIR)/.binutils.installed: SYSROOT := $(NATIVE_SYSROOT)
+$(NATIVE_BUILD_DIR)/.binutils.installed: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
 
-$(BUILD_BUILD_DIR)/.binutils.compiled: SYSROOT := $(BUILD_SYSROOT)
-$(BUILD_BUILD_DIR)/.binutils.compiled: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(NATIVE_BUILD_DIR)/.binutils.compiled: SYSROOT := $(NATIVE_SYSROOT)
+$(NATIVE_BUILD_DIR)/.binutils.compiled: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
 
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PREFIX := $(BOOTSTRAP_PREFIX)
 # there's no bootstrap sysroot
-$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: SYSROOT := $(BUILD_SYSROOT)
+$(BOOTSTRAP_BUILD_DIR)/.binutils.installed: SYSROOT := $(NATIVE_SYSROOT)
 $(BOOTSTRAP_BUILD_DIR)/.binutils.installed: PATH := $(ORIG_PATH)
 
 BINUTILS_CONFIG = \

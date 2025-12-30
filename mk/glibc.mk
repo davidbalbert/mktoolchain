@@ -1,9 +1,9 @@
 GLIBC_BASE_FLAGS := -O2 -g0 -ffile-prefix-map=$(SRC_DIR)=. -ffile-prefix-map=$(BUILD_ROOT)=. -frandom-seed=0
 %/.glibc.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/glibc-$(GLIBC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
-$(TARGET_BUILD_DIR)/.glibc.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.glibc.installed: PATH := $(TARGET_PREFIX)/bin:$(ORIG_PATH)
-$(TARGET_BUILD_DIR)/.glibc.installed: $(TARGET_BUILD_DIR)/.linux-headers.installed
+$(FINAL_BUILD_DIR)/.glibc.installed: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.glibc.installed: PATH := $(FINAL_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.glibc.installed: $(FINAL_BUILD_DIR)/.linux-headers.installed
 
 $(CROSS_BUILD_DIR)/.glibc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(CROSS_BUILD_DIR)/.glibc.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
@@ -11,20 +11,20 @@ $(CROSS_BUILD_DIR)/.glibc.installed: SYSROOT := $(CROSS_SYSROOT)
 $(CROSS_BUILD_DIR)/.glibc.installed: PATH := $(CROSS_PREFIX)/bin:$(ORIG_PATH)
 $(CROSS_BUILD_DIR)/.glibc.installed: $(CROSS_BUILD_DIR)/.linux-headers.installed
 
-$(BUILD_BUILD_DIR)/.glibc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(BUILD_BUILD_DIR)/.glibc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(BUILD_BUILD_DIR)/.glibc.installed: SYSROOT := $(BUILD_SYSROOT)
-$(BUILD_BUILD_DIR)/.glibc.installed: PATH := $(BUILD_PREFIX)/bin:$(ORIG_PATH)
-$(BUILD_BUILD_DIR)/.glibc.installed: $(BUILD_BUILD_DIR)/.linux-headers.installed
+$(NATIVE_BUILD_DIR)/.glibc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.glibc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.glibc.installed: SYSROOT := $(NATIVE_SYSROOT)
+$(NATIVE_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(NATIVE_BUILD_DIR)/.glibc.installed: $(NATIVE_BUILD_DIR)/.linux-headers.installed
 
 $(BOOTSTRAP_BUILD_DIR)/.glibc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.glibc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
 # there's no bootstrap sysroot
-$(BOOTSTRAP_BUILD_DIR)/.glibc.installed: SYSROOT := $(BUILD_SYSROOT)
+$(BOOTSTRAP_BUILD_DIR)/.glibc.installed: SYSROOT := $(NATIVE_SYSROOT)
 $(BOOTSTRAP_BUILD_DIR)/.glibc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-# BOOTSTRAP glibc gets installed in BUILD sysroot so we don't have to build a separate
+# BOOTSTRAP glibc gets installed in NATIVE sysroot so we don't have to build a separate
 # set of kernel headers for build.
-$(BOOTSTRAP_BUILD_DIR)/.glibc.installed: $(BUILD_BUILD_DIR)/.linux-headers.installed
+$(BOOTSTRAP_BUILD_DIR)/.glibc.installed: $(NATIVE_BUILD_DIR)/.linux-headers.installed
 
 GLIBC_CONFIG = \
 	--prefix=/usr \
@@ -37,14 +37,14 @@ GLIBC_CONFIG = \
 
 # Install just glibc headers (needed before building gcc with libgcc in Canadian Cross)
 # Uses the bootstrap-style cross-gcc (without libgcc) to configure glibc and install headers
-$(TARGET_BUILD_DIR)/.glibc-headers.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.glibc-headers.installed: PATH := $(TARGET_PREFIX)/bin:$(CROSS_PREFIX)/bin:$(ORIG_PATH)
-$(TARGET_BUILD_DIR)/.glibc-headers.installed: $(SRC_DIR)/glibc-$(GLIBC_VERSION) $(TARGET_BUILD_DIR)/.linux-headers.installed $(TARGET_BUILD_DIR)/.bootstrap-gcc.installed
-	mkdir -p $(TARGET_BUILD_DIR)/glibc-headers/build $(SYSROOT)/usr/include
-	ln -sfn $(SRC_DIR)/glibc-$(GLIBC_VERSION) $(TARGET_BUILD_DIR)/glibc-headers/src
-	cd $(TARGET_BUILD_DIR)/glibc-headers/build && \
+$(FINAL_BUILD_DIR)/.glibc-headers.installed: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.glibc-headers.installed: PATH := $(FINAL_PREFIX)/bin:$(CROSS_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.glibc-headers.installed: $(SRC_DIR)/glibc-$(GLIBC_VERSION) $(FINAL_BUILD_DIR)/.linux-headers.installed $(FINAL_BUILD_DIR)/.bootstrap-gcc.installed
+	mkdir -p $(FINAL_BUILD_DIR)/glibc-headers/build $(SYSROOT)/usr/include
+	ln -sfn $(SRC_DIR)/glibc-$(GLIBC_VERSION) $(FINAL_BUILD_DIR)/glibc-headers/src
+	cd $(FINAL_BUILD_DIR)/glibc-headers/build && \
 		../src/configure $(GLIBC_CONFIG)
-	cd $(TARGET_BUILD_DIR)/glibc-headers/build && $(MAKE) install-headers DESTDIR=$(SYSROOT)
+	cd $(FINAL_BUILD_DIR)/glibc-headers/build && $(MAKE) install-headers DESTDIR=$(SYSROOT)
 	touch $(SYSROOT)/usr/include/gnu/stubs.h
 	touch $@
 
@@ -62,11 +62,15 @@ $(BOOTSTRAP_BUILD_DIR)/.glibc.configured: $(BOOTSTRAP_BUILD_DIR)/.gcc.installed
 		../src/configure $(GLIBC_CONFIG)
 	touch $@
 
-# Bootstrap glibc needs CXX= to force glibc to build links-dso-program-c (C version)
-# instead of links-dso-program (C++ version). The C++ version requires -lgcc_s which
-# doesn't exist with bootstrap GCC (built with --disable-shared).
+# BOOTSTRAP and NATIVE glibc need CXX= to force glibc to build links-dso-program-c
+# (C version) instead of links-dso-program (C++ version). The C++ version requires
+# -lgcc_s which doesn't exist with bootstrap GCC (built with --disable-shared).
 $(BOOTSTRAP_BUILD_DIR)/.glibc.compiled: $(BOOTSTRAP_BUILD_DIR)/.glibc.configured
 	cd $(BOOTSTRAP_BUILD_DIR)/glibc/build && $(MAKE) CXX=
+	touch $@
+
+$(NATIVE_BUILD_DIR)/.glibc.compiled: $(NATIVE_BUILD_DIR)/.glibc.configured
+	cd $(NATIVE_BUILD_DIR)/glibc/build && $(MAKE) CXX=
 	touch $@
 
 %/.glibc.compiled: %/.glibc.configured

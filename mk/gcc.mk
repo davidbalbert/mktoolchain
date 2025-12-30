@@ -3,7 +3,7 @@
 %/.gcc.installed: SOURCE_DATE_EPOCH = $(shell cat $(SRC_DIR)/gcc-$(GCC_VERSION)/.timestamp 2>/dev/null || echo 1)
 
 %/.gcc.installed: SYSROOT_SYMLINK = ../sysroot
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT_SYMLINK := ../../../../$(BUILD)/$(BUILD_TOOLCHAIN_NAME)/sysroot
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT_SYMLINK := ../../../../$(BUILD)/$(NATIVE_TOOLCHAIN_NAME)/sysroot
 
 # LDFLAGS for bootstrap - disable build-id to ensure reproducibility
 # (build-id is computed from inputs which may contain paths)
@@ -14,65 +14,65 @@ $(BOOTSTRAP_BUILD_DIR)/.gcc.compiled: LDFLAGS := -Wl,--build-id=none
 # Cross-compilers don't need this as build tools must run on build machine
 %/.gcc.installed: LDFLAGS :=
 %/.gcc.compiled: LDFLAGS :=
-$(BUILD_BUILD_DIR)/.gcc.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
-$(BUILD_BUILD_DIR)/.gcc.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(NATIVE_BUILD_DIR)/.gcc.installed: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
+$(NATIVE_BUILD_DIR)/.gcc.compiled: LDFLAGS = -L$(SYSROOT)/usr/lib -Wl,-rpath=$(RPATH_PLACEHOLDER) -Wl,--dynamic-linker=$(INTERP_SYMLINK)
 
-# TARGET gcc: runs on BUILD, targets TARGET (cross-compiler)
-$(TARGET_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(TARGET_BUILD_DIR)/.gcc.installed: PREFIX := $(TARGET_PREFIX)
-$(TARGET_BUILD_DIR)/.gcc.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.gcc.installed: PATH := $(BUILD_PREFIX)/bin:$(ORIG_PATH)
+# FINAL gcc: runs on BUILD, targets TARGET (cross-compiler)
+$(FINAL_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc.installed: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.gcc.installed: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.gcc.installed: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
 # When cross-compiling (HOST_ARCH != TARGET_ARCH), need to specify where target binutils are
-$(TARGET_BUILD_DIR)/.gcc.installed: TARGET_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(TARGET_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(TARGET_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(TARGET_BUILD_TIME_TOOLS)
+$(FINAL_BUILD_DIR)/.gcc.installed: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
+$(FINAL_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
 
-# Bootstrap-style gcc for TARGET (used to install glibc headers before building full gcc)
+# Bootstrap-style gcc for FINAL (used to install glibc headers before building full gcc)
 # Only needed when cross-compiling (HOST_ARCH != TARGET_ARCH)
-$(TARGET_BUILD_DIR)/.bootstrap-gcc.installed: PREFIX := $(TARGET_PREFIX)
-$(TARGET_BUILD_DIR)/.bootstrap-gcc.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.bootstrap-gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
-$(TARGET_BUILD_DIR)/.bootstrap-gcc.installed: TARGET_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(TARGET_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(TARGET_BUILD_DIR)/.bootstrap-gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(TARGET_BUILD_TIME_TOOLS)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: PATH := $(CROSS_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
+$(FINAL_BUILD_DIR)/.bootstrap-gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
 
 $(CROSS_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(CROSS_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(HOST_TRIPLE)
 $(CROSS_BUILD_DIR)/.gcc.installed: PREFIX := $(CROSS_PREFIX)
 $(CROSS_BUILD_DIR)/.gcc.installed: SYSROOT := $(CROSS_SYSROOT)
-$(CROSS_BUILD_DIR)/.gcc.installed: PATH := $(BUILD_PREFIX)/bin:$(ORIG_PATH)
+$(CROSS_BUILD_DIR)/.gcc.installed: PATH := $(NATIVE_PREFIX)/bin:$(ORIG_PATH)
 # Canadian Cross needs target binutils from CROSS_PREFIX (already built by binutils.mk)
 $(CROSS_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) \
 	--with-build-time-tools=$(CROSS_PREFIX)/$(HOST_TRIPLE)/bin
 
-$(BUILD_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(BUILD_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
-$(BUILD_BUILD_DIR)/.gcc.installed: PREFIX := $(BUILD_PREFIX)
-$(BUILD_BUILD_DIR)/.gcc.installed: SYSROOT := $(BUILD_SYSROOT)
-$(BUILD_BUILD_DIR)/.gcc.installed: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
-# If we're using the BOOTSTRAP compiler, make sure we still use BUILD binutils.
-$(BUILD_BUILD_DIR)/.gcc.installed: BUILD_TIME_TOOLS := $(if $(wildcard $(BUILD_PREFIX)/bin/$(TARGET_TRIPLE)-gcc),,--with-build-time-tools=$(BUILD_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(BUILD_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(BUILD_TIME_TOOLS)
+$(NATIVE_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
+$(NATIVE_BUILD_DIR)/.gcc.installed: PREFIX := $(NATIVE_PREFIX)
+$(NATIVE_BUILD_DIR)/.gcc.installed: SYSROOT := $(NATIVE_SYSROOT)
+$(NATIVE_BUILD_DIR)/.gcc.installed: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+# If we're using the BOOTSTRAP compiler, make sure we still use NATIVE binutils.
+$(NATIVE_BUILD_DIR)/.gcc.installed: NATIVE_BUILD_TIME_TOOLS := $(if $(wildcard $(NATIVE_PREFIX)/bin/$(TARGET_TRIPLE)-gcc),,--with-build-time-tools=$(NATIVE_PREFIX)/$(TARGET_TRIPLE)/bin)
+$(NATIVE_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_FINAL_CONFIG) $(NATIVE_BUILD_TIME_TOOLS)
 
-$(BUILD_BUILD_DIR)/.gcc.compiled: SYSROOT := $(BUILD_SYSROOT)
-$(BUILD_BUILD_DIR)/.gcc.compiled: PATH := $(BUILD_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
+$(NATIVE_BUILD_DIR)/.gcc.compiled: SYSROOT := $(NATIVE_SYSROOT)
+$(NATIVE_BUILD_DIR)/.gcc.compiled: PATH := $(NATIVE_PREFIX)/bin:$(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
 
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: TARGET_TRIPLE := $(BUILD_TRIPLE)
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PREFIX := $(BOOTSTRAP_PREFIX)
 # there's no bootstrap sysroot
-$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT := $(BUILD_SYSROOT)
+$(BOOTSTRAP_BUILD_DIR)/.gcc.installed: SYSROOT := $(NATIVE_SYSROOT)
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: PATH := $(BOOTSTRAP_PREFIX)/bin:$(ORIG_PATH)
 $(BOOTSTRAP_BUILD_DIR)/.gcc.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG)
 
 # gcc-stage1: Bootstrap-style gcc for TARGET architecture (used to build glibc before full gcc)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: PREFIX := $(TARGET_PREFIX)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: SYSROOT := $(TARGET_SYSROOT)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: PATH := $(TARGET_PREFIX)/bin:$(BUILD_PREFIX)/bin:$(ORIG_PATH)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: LDFLAGS :=
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: HOST_TRIPLE := $(BUILD_TRIPLE)
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: PREFIX := $(FINAL_PREFIX)
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: SYSROOT := $(FINAL_SYSROOT)
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: PATH := $(FINAL_PREFIX)/bin:$(NATIVE_PREFIX)/bin:$(ORIG_PATH)
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: LDFLAGS :=
 # When cross-compiling (HOST_ARCH != TARGET_ARCH), need to specify where target binutils are
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: TARGET_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(TARGET_PREFIX)/$(TARGET_TRIPLE)/bin)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(TARGET_BUILD_TIME_TOOLS)
-$(TARGET_BUILD_DIR)/.gcc-stage1.installed: SYSROOT_SYMLINK = ../sysroot
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: FINAL_BUILD_TIME_TOOLS := $(if $(filter-out $(HOST_ARCH),$(TARGET_ARCH)),--with-build-time-tools=$(FINAL_PREFIX)/$(TARGET_TRIPLE)/bin)
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: GCC_CONFIG = $(GCC_BASE_CONFIG) $(GCC_BOOTSTRAP_CONFIG) $(FINAL_BUILD_TIME_TOOLS)
+$(FINAL_BUILD_DIR)/.gcc-stage1.installed: SYSROOT_SYMLINK = ../sysroot
 
 
 GCC_BASE_CONFIG = \
@@ -109,12 +109,12 @@ GCC_FINAL_CONFIG = \
 
 .PRECIOUS: %/.gcc.configured %/.gcc.compiled %/.gcc.installed
 
-# When cross-compiling (HOST != TARGET), TARGET gcc needs glibc headers installed first
+# When cross-compiling (HOST != TARGET), FINAL gcc needs glibc headers installed first
 ifneq ($(HOST_ARCH),$(TARGET_ARCH))
-$(TARGET_BUILD_DIR)/.gcc.configured: $(TARGET_BUILD_DIR)/.glibc-headers.installed
+$(FINAL_BUILD_DIR)/.gcc.configured: $(FINAL_BUILD_DIR)/.glibc-headers.installed
 endif
 
-# Full TARGET gcc needs glibc installed to build libgcc_s.so
+# Full FINAL gcc needs glibc installed to build libgcc_s.so
 # This dependency is set conditionally in Makefile based on build type
 
 %/.gcc.configured: $(SRC_DIR)/gcc-$(GCC_VERSION) %/.binutils.installed
