@@ -110,24 +110,24 @@ $(NATIVE_BUILD_DIR)/.gcc.configured: $(NATIVE_BUILD_DIR)/.glibc.installed
 
 # CROSS stage: built by NATIVE (only when CROSS != NATIVE, i.e., HOST != BUILD)
 ifneq ($(HOST),$(BUILD))
-$(CROSS_BUILD_DIR)/.binutils.configured: $(NATIVE_BUILD_DIR)/.gcc.installed
-$(CROSS_BUILD_DIR)/.gcc-stage1.configured: $(NATIVE_BUILD_DIR)/.gcc.installed
+$(CROSS_BUILD_DIR)/.binutils.configured: $(NATIVE_BUILD_DIR)/.toolchain
+$(CROSS_BUILD_DIR)/.gcc-stage1.configured: $(NATIVE_BUILD_DIR)/.toolchain
 $(CROSS_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc-stage1.installed
 $(CROSS_BUILD_DIR)/.gcc.configured: $(CROSS_BUILD_DIR)/.glibc.installed
 endif
 
 # FINAL stage: built by CROSS (only when FINAL_BUILD_DIR != CROSS_BUILD_DIR)
 ifneq ($(FINAL_BUILD_DIR),$(CROSS_BUILD_DIR))
-$(FINAL_BUILD_DIR)/.binutils.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+$(FINAL_BUILD_DIR)/.binutils.configured: $(CROSS_BUILD_DIR)/.toolchain
 $(FINAL_BUILD_DIR)/.gcc.configured: $(FINAL_BUILD_DIR)/.glibc.installed
 
 # When HOST==TARGET (native compiler for HOST), use CROSS gcc to build FINAL glibc
 # since CROSS gcc targets HOST which equals TARGET. No need for gcc-stage1.
 # When HOST!=TARGET (cross-compiler), need gcc-stage1 that targets TARGET.
 ifeq ($(HOST),$(TARGET))
-$(FINAL_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+$(FINAL_BUILD_DIR)/.glibc.configured: $(CROSS_BUILD_DIR)/.toolchain
 else
-$(FINAL_BUILD_DIR)/.gcc-stage1.configured: $(CROSS_BUILD_DIR)/.gcc.installed
+$(FINAL_BUILD_DIR)/.gcc-stage1.configured: $(CROSS_BUILD_DIR)/.toolchain
 $(FINAL_BUILD_DIR)/.gcc-stage1.compiled: $(FINAL_BUILD_DIR)/.glibc-headers.installed
 $(FINAL_BUILD_DIR)/.glibc.configured: $(FINAL_BUILD_DIR)/.gcc-stage1.installed
 endif
